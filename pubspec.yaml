@@ -1,0 +1,45 @@
+name: rss_reader
+description: A multi-platform RSS reader with offline support
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # RSS 解析
+  webfeed: ^0.7.0
+
+  # HTTP 请求
+  dio: ^5.3.0
+
+  # HTML 解析（全文抓取）
+  html: ^0.15.4
+
+  # 本地存储
+  shared_preferences: ^2.2.0
+  path_provider: ^2.1.0
+
+  # 状态管理
+  provider: ^6.0.5
+
+  # UI
+  cached_network_image: ^3.2.3
+  flutter_html: ^3.0.0-beta.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/backup/
