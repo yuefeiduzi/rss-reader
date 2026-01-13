@@ -54,6 +54,54 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     // TODO: 使用 url_launcher 打开链接
   }
 
+  void _showImagePreview(BuildContext context, String url) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black87,
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (BuildContext dialogContext, Animation animation, Animation secondaryAnimation) {
+        return GestureDetector(
+          onTap: () => Navigator.of(dialogContext).pop(),
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.network(
+                  url,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const CircularProgressIndicator();
+                  },
+                  errorBuilder: (context, error, stack) {
+                    return const Icon(Icons.broken_image, color: Colors.white, size: 48);
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 处理 HTML 内容，为图片添加点击事件
+  String _processHtmlWithImageClick(String html) {
+    // 只添加点击链接，不修改 img 标签
+    return html.replaceAllMapped(RegExp(r'<img([^>]*?)src="([^"]+)"([^>]*?)>'), (match) {
+      final url = match.group(2) ?? '';
+      final attrs = '${match.group(1) ?? ''}${match.group(3) ?? ''}';
+      return '<a href="$url" class="image-link"><img$attrs></a>';
+    }).replaceAllMapped(RegExp(r"<img([^>]*?)src='([^']+)'([^>]*?)>"), (match) {
+      final url = match.group(2) ?? '';
+      final attrs = '${match.group(1) ?? ''}${match.group(3) ?? ''}';
+      return "<a href=\"$url\" class=\"image-link\"><img$attrs></a>";
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -112,21 +160,30 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                       ],
                     ),
                     const Divider(height: 24),
-                    Html(
-                      data: _fullContent,
-                      style: {
-                        'body': Style(
-                          fontSize: FontSize(16),
-                          lineHeight: LineHeight(1.6),
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                        'img': Style(
-                          width: Width(MediaQuery.of(context).size.width - 32),
-                        ),
-                        'a': Style(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      },
+                    SizedBox(
+                      width: double.infinity,
+                      child: Html(
+                        data: _processHtmlWithImageClick(_fullContent),
+                        style: {
+                          'body': Style(
+                            fontSize: FontSize(16),
+                            lineHeight: LineHeight(1.6),
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                          'p': Style(
+                            margin: Margins.zero,
+                            padding: HtmlPaddings.zero,
+                          ),
+                          'a': Style(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        },
+                        onAnchorTap: (url, _, __) {
+                          if (url != null) {
+                            _showImagePreview(context, url);
+                          }
+                        },
+                      ),
                     ),
                   ],
                 ),

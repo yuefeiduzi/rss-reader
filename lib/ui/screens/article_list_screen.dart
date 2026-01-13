@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 import '../../models/feed.dart';
 import '../../models/article.dart';
+import '../../services/rss_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import 'article_detail_screen.dart';
@@ -35,15 +37,14 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
   Future<void> _loadArticles() async {
     setState(() => _isLoading = true);
     try {
-      // 先加载本地缓存
       final local = await widget.storageService.getArticlesByFeed(widget.feed.id);
-      if (local.isNotEmpty) {
+      if (mounted) {
         setState(() {
           _articles = local;
           _isLoading = false;
         });
       }
-      // 然后刷新获取新文章
+      // 加载完缓存后自动刷新
       await _refreshArticles();
     } catch (e) {
       if (mounted) {
@@ -51,19 +52,32 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
           SnackBar(content: Text('Error: $e')),
         );
       }
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _refreshArticles() async {
     setState(() => _isRefreshing = true);
     try {
-      // TODO: 实现 RSS 抓取
-      // final rssService = RssService();
-      // final newArticles = await rssService.fetchArticles(widget.feed);
-      // await widget.storageService.addArticles(newArticles);
-      // await _loadArticles();
+      debugPrint('Fetching articles for feed: ${widget.feed.id}, url: ${widget.feed.url}');
+      final rssService = RssService();
+      final newArticles = await rssService.fetchArticles(widget.feed);
+      debugPrint('Fetched ${newArticles.length} articles');
+      // 打印第一篇文章的标题和摘要
+      if (newArticles.isNotEmpty) {
+        debugPrint('First article title: ${newArticles.first.title}');
+        debugPrint('First article summary: ${newArticles.first.summary}');
+      }
+      await widget.storageService.addArticles(newArticles);
+      // 重新加载本地数据
+      final local = await widget.storageService.getArticlesByFeed(widget.feed.id);
+      if (mounted) {
+        setState(() {
+          _articles = local;
+        });
+      }
     } catch (e) {
+      debugPrint('Failed to fetch articles: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to refresh: $e')),
@@ -156,6 +170,21 @@ class ArticleCard extends StatelessWidget {
     required this.onFavorite,
   });
 
+  // 提取纯文本摘要（100字）
+  String _getSummaryText(String? html) {
+    if (html == null) return '';
+    final text = html
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll(RegExp(r'&nbsp;'), ' ')
+        .replaceAll(RegExp(r'&amp;'), '&')
+        .replaceAll(RegExp(r'&lt;'), '<')
+        .replaceAll(RegExp(r'&gt;'), '>')
+        .replaceAll(RegExp(r'&quot;'), '"')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return text.length > 100 ? text.substring(0, 100) + '...' : text;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -168,6 +197,40 @@ class ArticleCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 有头图时只显示头图
+              if (article.imageUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    article.imageUrl!,
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              // 没有头图时显示100字文字简介
+              else if (article.summary != null && article.summary!.isNotEmpty)
+                Text(
+                  _getSummaryText(article.summary),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              // 有头图时在标题下显示简短摘要
+              if (article.imageUrl != null && article.summary != null && article.summary!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _getSummaryText(article.summary),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               Row(
                 children: [
                   Expanded(
@@ -218,18 +281,6 @@ class ArticleCard extends StatelessWidget {
                             ),
                       ),
                     ],
-                  ),
-                ),
-              if (article.summary != null && article.summary!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    article.summary!,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
             ],

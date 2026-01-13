@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 import '../models/article.dart';
@@ -70,7 +71,9 @@ class RssService {
 
       List<Article> articles = [];
 
-      if (decoder.contains('<feed')) {
+      // 判断格式：优先检查 <rss> 或 <item> 标签
+      final isAtom = decoder.contains('<feed') && decoder.contains('<entry');
+      if (isAtom) {
         articles = _parseAtomArticles(decoder, feed);
       } else {
         articles = _parseRssArticles(decoder, feed);
@@ -149,10 +152,8 @@ class RssService {
 
       if (title.isEmpty || link.isEmpty) continue;
 
-      // 移除 HTML 标签获取纯文本摘要
-      final summary = description != null
-          ? description.replaceAll(RegExp(r'<[^>]+>'), '').trim()
-          : null;
+      // 解码 HTML 实体
+      final decodedDescription = _decodeHtmlEntities(description ?? '');
 
       final pubDate = pubDateMatch?.group(1) != null
           ? DateTime.tryParse(pubDateMatch!.group(1)!)
@@ -163,14 +164,14 @@ class RssService {
         feedId: feed.id,
         title: title.trim(),
         link: link,
-        content: description,
-        summary: summary,
+        content: decodedDescription,
+        summary: decodedDescription,
         author: authorMatch?.group(1),
         pubDate: pubDate ?? DateTime.now(),
         isRead: false,
         isFavorite: false,
         isCached: false,
-        imageUrl: _extractImage(description ?? ''),
+        imageUrl: _extractImage(decodedDescription),
         cachedAt: DateTime.now(),
       ));
     }
@@ -210,6 +211,42 @@ class RssService {
     } catch (e) {
       return null;
     }
+  }
+
+  /// 解码 HTML 实体
+  String _decodeHtmlEntities(String html) {
+    if (html.isEmpty) return '';
+    return html
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
+          final code = int.tryParse(m.group(1)!);
+          return code != null ? String.fromCharCode(code) : m.group(0)!;
+        });
+  }
+
+  /// 移除 HTML 标签并解码实体
+  String _stripHtmlTags(String html) {
+    // 先解码 HTML 实体
+    var text = html.replaceAll(RegExp(r'&nbsp;'), ' ')
+        .replaceAll(RegExp(r'&amp;'), '&')
+        .replaceAll(RegExp(r'&lt;'), '<')
+        .replaceAll(RegExp(r'&gt;'), '>')
+        .replaceAll(RegExp(r'&quot;'), '"')
+        .replaceAll(RegExp(r'&#\d+;'), '')
+        .replaceAll(RegExp(r'&apos;'), "'");
+
+    // 移除所有 HTML 标签（包括跨行标签）
+    text = text.replaceAll(RegExp(r'<[^>]*>'), '');
+
+    // 移除多余空白
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return text;
   }
 
   /// 生成 Feed ID
