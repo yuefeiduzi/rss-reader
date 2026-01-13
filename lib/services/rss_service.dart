@@ -214,7 +214,8 @@ class RssService {
 
   /// 生成 Feed ID
   String _generateId(String url) {
-    return Uri.parse(url).host + '_' + DateTime.now().millisecondsSinceEpoch.toString();
+    final uri = Uri.parse(url);
+    return '${uri.host}${uri.path}'.hashCode.toString();
   }
 
   /// 生成文章 ID
