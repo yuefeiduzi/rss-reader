@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_html/flutter_html.dart';
 import '../../models/feed.dart';
 import '../../models/article.dart';
 import '../../services/rss_service.dart';
@@ -11,12 +10,14 @@ class ArticleListScreen extends StatefulWidget {
   final Feed feed;
   final StorageService storageService;
   final ThemeService themeService;
+  final void Function(Article article)? onArticleSelected;
 
   const ArticleListScreen({
     super.key,
     required this.feed,
     required this.storageService,
     required this.themeService,
+    this.onArticleSelected,
   });
 
   @override
@@ -37,7 +38,8 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
   Future<void> _loadArticles() async {
     setState(() => _isLoading = true);
     try {
-      final local = await widget.storageService.getArticlesByFeed(widget.feed.id);
+      final local =
+          await widget.storageService.getArticlesByFeed(widget.feed.id);
       if (mounted) {
         setState(() {
           _articles = local;
@@ -59,7 +61,8 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
   Future<void> _refreshArticles() async {
     setState(() => _isRefreshing = true);
     try {
-      debugPrint('Fetching articles for feed: ${widget.feed.id}, url: ${widget.feed.url}');
+      debugPrint(
+          'Fetching articles for feed: ${widget.feed.id}, url: ${widget.feed.url}');
       final rssService = RssService();
       final newArticles = await rssService.fetchArticles(widget.feed);
       debugPrint('Fetched ${newArticles.length} articles');
@@ -70,7 +73,8 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
       }
       await widget.storageService.addArticles(newArticles);
       // 重新加载本地数据
-      final local = await widget.storageService.getArticlesByFeed(widget.feed.id);
+      final local =
+          await widget.storageService.getArticlesByFeed(widget.feed.id);
       if (mounted) {
         setState(() {
           _articles = local;
@@ -91,6 +95,15 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
   void _navigateToDetail(Article article) async {
     await widget.storageService.markAsRead(article.id);
     if (!mounted) return;
+
+    // 如果有回调函数（宽屏模式），调用回调而不是导航
+    if (widget.onArticleSelected != null) {
+      widget.onArticleSelected!(article);
+      _loadArticles();
+      return;
+    }
+
+    // 否则导航到详情页（窄屏模式）
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -109,7 +122,8 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.feed.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(widget.feed.title,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -136,23 +150,38 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
                     ],
                   ),
                 )
-              : RefreshIndicator(
-                  onRefresh: _refreshArticles,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(8),
-                    itemCount: _articles.length,
-                    itemBuilder: (context, index) {
-                      final article = _articles[index];
-                      return ArticleCard(
-                        article: article,
-                        onTap: () => _navigateToDetail(article),
-                        onFavorite: () async {
-                          await widget.storageService.toggleFavorite(article.id);
-                          _loadArticles();
+              : Stack(
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: _refreshArticles,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: _articles.length,
+                        itemBuilder: (context, index) {
+                          final article = _articles[index];
+                          return ArticleCard(
+                            article: article,
+                            onTap: () => _navigateToDetail(article),
+                            onFavorite: () async {
+                              await widget.storageService
+                                  .toggleFavorite(article.id);
+                              _loadArticles();
+                            },
+                          );
                         },
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                    // 刷新时的顶部进度指示
+                    if (_isRefreshing)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: LinearProgressIndicator(
+                          minHeight: 2,
+                        ),
+                      ),
+                  ],
                 ),
     );
   }
@@ -217,9 +246,26 @@ class ArticleCard extends StatelessWidget {
                       ),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
+                )
+              // 没有头图也没有摘要时显示占位提示
+              else
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'No preview available',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withOpacity(0.6),
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
                 ),
               // 有头图时在标题下显示简短摘要
-              if (article.imageUrl != null && article.summary != null && article.summary!.isNotEmpty)
+              if (article.imageUrl != null &&
+                  article.summary != null &&
+                  article.summary!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
@@ -249,7 +295,9 @@ class ArticleCard extends StatelessWidget {
                   ),
                   IconButton(
                     icon: Icon(
-                      article.isFavorite ? Icons.favorite : Icons.favorite_border,
+                      article.isFavorite
+                          ? Icons.favorite
+                          : Icons.favorite_border,
                       color: article.isFavorite
                           ? Theme.of(context).colorScheme.primary
                           : null,
@@ -269,15 +317,20 @@ class ArticleCard extends StatelessWidget {
                       if (article.author != null)
                         Text(
                           article.author!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
                       const Spacer(),
                       Text(
                         _formatDate(article.pubDate),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                       ),
                     ],

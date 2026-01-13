@@ -1,25 +1,46 @@
 import 'dart:convert';
-import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 import '../models/article.dart';
 import '../models/feed.dart';
 
 class RssService {
-  final Dio _dio = Dio();
+  late final Dio _dio;
+
+  RssService() {
+    _dio = Dio(BaseOptions(
+      responseType: ResponseType.bytes,
+      followRedirects: true,
+      maxRedirects: 5,
+      validateStatus: (status) => status! < 500,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RSS Reader/1.0)',
+        'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+      },
+    ));
+  }
+
+  /// 预处理 XML，移除 CDATA 区块
+  String _preprocessXml(String xml) {
+    // 移除 CDATA 区块
+    return xml.replaceAllMapped(RegExp(r'<!\[CDATA\[([\s\S]*?)\]\]>'), (match) {
+      return match.group(1) ?? '';
+    });
+  }
 
   /// 解析 RSS/Atom 订阅源
   Future<Feed> fetchFeed(String url) async {
     try {
-      final response = await _dio.get(url, options: Options(responseType: ResponseType.bytes));
+      final response = await _dio.get(url);
       final decoder = utf8.decode(response.data);
+      final processedXml = _preprocessXml(decoder);
 
-      if (decoder.contains('<feed')) {
+      if (processedXml.contains('<feed')) {
         // Atom 解析
-        return _parseAtomFeed(decoder, url);
+        return _parseAtomFeed(processedXml, url);
       } else {
         // RSS 解析
-        return _parseRssFeed(decoder, url);
+        return _parseRssFeed(processedXml, url);
       }
     } catch (e) {
       throw Exception('Failed to parse feed: $e');
@@ -48,7 +69,8 @@ class RssService {
     final titleMatch = RegExp(r'<title[^>]*>([^<]+)</title>').firstMatch(xml);
     final title = titleMatch?.group(1) ?? 'Unknown Feed';
 
-    final descMatch = RegExp(r'<description[^>]*>([^<]+)</description>').firstMatch(xml);
+    final descMatch =
+        RegExp(r'<description[^>]*>([^<]+)</description>').firstMatch(xml);
     final description = descMatch?.group(1);
 
     return Feed(
@@ -64,19 +86,23 @@ class RssService {
   }
 
   /// 获取订阅源文章列表
-  Future<List<Article>> fetchArticles(Feed feed, {bool forceFullContent = false}) async {
+  Future<List<Article>> fetchArticles(Feed feed,
+      {bool forceFullContent = false}) async {
     try {
-      final response = await _dio.get(feed.url, options: Options(responseType: ResponseType.bytes));
+      final response = await _dio.get(feed.url,
+          options: Options(responseType: ResponseType.bytes));
       final decoder = utf8.decode(response.data);
+      final processedXml = _preprocessXml(decoder);
 
       List<Article> articles = [];
 
       // 判断格式：优先检查 <rss> 或 <item> 标签
-      final isAtom = decoder.contains('<feed') && decoder.contains('<entry');
+      final isAtom =
+          processedXml.contains('<feed') && processedXml.contains('<entry');
       if (isAtom) {
-        articles = _parseAtomArticles(decoder, feed);
+        articles = _parseAtomArticles(processedXml, feed);
       } else {
-        articles = _parseRssArticles(decoder, feed);
+        articles = _parseRssArticles(processedXml, feed);
       }
 
       return articles;
@@ -93,22 +119,27 @@ class RssService {
       final itemXml = match.group(1) ?? '';
       if (itemXml.isEmpty) continue;
 
-      final titleMatch = RegExp(r'<title[^>]*>([^<]+)</title>').firstMatch(itemXml);
-      final linkMatch = RegExp(r'<link[^>]*href="([^"]+)"').firstMatch(itemXml);
-      final idMatch = RegExp(r'<id[^>]*>([^<]+)</id>').firstMatch(itemXml);
-      final summaryMatch = RegExp(r'<summary[^>]*>([^<]+)</summary>').firstMatch(itemXml);
-      final publishedMatch = RegExp(r'<published[^>]*>([^<]+)</published>').firstMatch(itemXml);
-      final updatedMatch = RegExp(r'<updated[^>]*>([^<]+)</updated>').firstMatch(itemXml);
-      final authorMatch = RegExp(r'<author[^>]*><name[^>]*>([^<]+)</name>').firstMatch(itemXml);
+      final titleMatch = _extractTagContent(itemXml, 'title');
+      final linkMatch = _extractTagContent(itemXml, 'link', attribute: 'href');
+      final idMatch = _extractTagContent(itemXml, 'id');
+      final summaryMatch =
+          _extractTagContent(itemXml, 'summary', multiline: true);
+      final contentMatch =
+          _extractTagContent(itemXml, 'content', multiline: true);
+      final publishedMatch = _extractTagContent(itemXml, 'published');
+      final updatedMatch = _extractTagContent(itemXml, 'updated');
+      final authorMatch = _extractTagContent(itemXml, 'author') ??
+          _extractNestedTagContent(itemXml, 'author', 'name');
 
-      final title = titleMatch?.group(1) ?? 'Untitled';
-      final link = linkMatch?.group(1) ?? '';
-      final id = idMatch?.group(1) ?? link;
+      final title = titleMatch ?? 'Untitled';
+      final link = linkMatch ?? '';
+      final id = idMatch ?? link;
 
       if (title.isEmpty || link.isEmpty) continue;
 
-      final pubDateStr = publishedMatch?.group(1) ?? updatedMatch?.group(1);
-      final pubDate = pubDateStr != null ? DateTime.tryParse(pubDateStr) : DateTime.now();
+      final pubDateStr = publishedMatch ?? updatedMatch;
+      final pubDate =
+          pubDateStr != null ? DateTime.tryParse(pubDateStr) : DateTime.now();
 
       articles.add(Article(
         id: _generateArticleId(feed.id, id),
@@ -116,8 +147,8 @@ class RssService {
         title: title.trim(),
         link: link,
         content: null,
-        summary: summaryMatch?.group(1)?.trim(),
-        author: authorMatch?.group(1),
+        summary: summaryMatch ?? contentMatch,
+        author: authorMatch,
         pubDate: pubDate ?? DateTime.now(),
         isRead: false,
         isFavorite: false,
@@ -130,6 +161,37 @@ class RssService {
     return articles;
   }
 
+  /// 从 XML 中提取带属性的标签内容
+  String? _extractTagContent(String xml, String tagName,
+      {bool multiline = false, String? attribute}) {
+    if (attribute != null) {
+      // 提取属性值
+      final pattern =
+          RegExp('<$tagName[^>]*$attribute="([^"]+)"', caseSensitive: false);
+      final match = pattern.firstMatch(xml);
+      return match?.group(1);
+    }
+    final pattern = multiline
+        ? RegExp('<$tagName[^>]*>([\\s\\S]*?)</$tagName>', caseSensitive: false)
+        : RegExp('<$tagName[^>]*>([^<]+)</$tagName>', caseSensitive: false);
+    final match = pattern.firstMatch(xml);
+    return match?.group(1)?.trim();
+  }
+
+  /// 从嵌套标签中提取内容
+  String? _extractNestedTagContent(
+      String xml, String parentTag, String childTag) {
+    final pattern = RegExp('<$parentTag[^>]*>([\\s\\S]*?)</$parentTag>',
+        caseSensitive: false);
+    final match = pattern.firstMatch(xml);
+    if (match == null) return null;
+    final parentContent = match.group(1) ?? '';
+    final childPattern =
+        RegExp('<$childTag[^>]*>([^<]+)</$childTag>', caseSensitive: false);
+    final childMatch = childPattern.firstMatch(parentContent);
+    return childMatch?.group(1);
+  }
+
   List<Article> _parseRssArticles(String xml, Feed feed) {
     final articles = <Article>[];
     final itemRegex = RegExp(r'<item[^>]*>([\s\S]*?)</item>');
@@ -138,25 +200,27 @@ class RssService {
       final itemXml = match.group(1) ?? '';
       if (itemXml.isEmpty) continue;
 
-      final titleMatch = RegExp(r'<title[^>]*>([^<]+)</title>').firstMatch(itemXml);
-      final linkMatch = RegExp(r'<link[^>]*>([^<]+)</link>').firstMatch(itemXml);
-      final descMatch = RegExp(r'<description[^>]*>([\s\S]*?)</description>').firstMatch(itemXml);
-      final guidMatch = RegExp(r'<guid[^>]*>([^<]+)</guid>').firstMatch(itemXml);
-      final pubDateMatch = RegExp(r'<pubDate[^>]*>([^<]+)</pubDate>').firstMatch(itemXml);
-      final authorMatch = RegExp(r'<author[^>]*>([^<]+)</author>').firstMatch(itemXml);
+      // 使用更健壮的正则来匹配标签内容
+      final titleMatch = _extractTagContent(itemXml, 'title');
+      final linkMatch = _extractTagContent(itemXml, 'link');
+      final descMatch =
+          _extractTagContent(itemXml, 'description', multiline: true);
+      final guidMatch = _extractTagContent(itemXml, 'guid');
+      final pubDateMatch = _extractTagContent(itemXml, 'pubDate');
+      final authorMatch = _extractTagContent(itemXml, 'dc:creator') ??
+          _extractTagContent(itemXml, 'author');
 
-      final title = titleMatch?.group(1) ?? 'Untitled';
-      final link = linkMatch?.group(1) ?? '';
-      final guid = guidMatch?.group(1) ?? link;
-      final description = descMatch?.group(1);
+      final title = titleMatch ?? 'Untitled';
+      final link = linkMatch ?? '';
+      final guid = guidMatch ?? link;
 
       if (title.isEmpty || link.isEmpty) continue;
 
       // 解码 HTML 实体
-      final decodedDescription = _decodeHtmlEntities(description ?? '');
+      final decodedDescription = _decodeHtmlEntities(descMatch ?? '');
 
-      final pubDate = pubDateMatch?.group(1) != null
-          ? DateTime.tryParse(pubDateMatch!.group(1)!)
+      final pubDate = pubDateMatch != null
+          ? DateTime.tryParse(pubDateMatch)
           : DateTime.now();
 
       articles.add(Article(
@@ -166,7 +230,7 @@ class RssService {
         link: link,
         content: decodedDescription,
         summary: decodedDescription,
-        author: authorMatch?.group(1),
+        author: authorMatch,
         pubDate: pubDate ?? DateTime.now(),
         isRead: false,
         isFavorite: false,
@@ -186,10 +250,13 @@ class RssService {
       final document = html_parser.parse(response.data);
 
       // 移除脚本和样式
-      document.querySelectorAll('script, style, nav, footer, header').forEach((e) => e.remove());
+      document
+          .querySelectorAll('script, style, nav, footer, header')
+          .forEach((e) => e.remove());
 
       // 查找文章内容
-      final article = document.querySelector('article, .post-content, .article-content, .entry-content, .content, main');
+      final article = document.querySelector(
+          'article, .post-content, .article-content, .entry-content, .content, main');
 
       if (article != null) {
         return article.innerHtml;
@@ -224,15 +291,16 @@ class RssService {
         .replaceAll('&quot;', '"')
         .replaceAll('&apos;', "'")
         .replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
-          final code = int.tryParse(m.group(1)!);
-          return code != null ? String.fromCharCode(code) : m.group(0)!;
-        });
+      final code = int.tryParse(m.group(1)!);
+      return code != null ? String.fromCharCode(code) : m.group(0)!;
+    });
   }
 
   /// 移除 HTML 标签并解码实体
   String _stripHtmlTags(String html) {
     // 先解码 HTML 实体
-    var text = html.replaceAll(RegExp(r'&nbsp;'), ' ')
+    var text = html
+        .replaceAll(RegExp(r'&nbsp;'), ' ')
         .replaceAll(RegExp(r'&amp;'), '&')
         .replaceAll(RegExp(r'&lt;'), '<')
         .replaceAll(RegExp(r'&gt;'), '>')

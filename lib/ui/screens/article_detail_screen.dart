@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/article.dart';
+import '../../models/feed.dart';
+import '../../services/rss_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 
@@ -23,11 +27,20 @@ class ArticleDetailScreen extends StatefulWidget {
 class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   bool _isLoading = true;
   String _fullContent = '';
+  Feed? _feed;
 
   @override
   void initState() {
     super.initState();
     _loadContent();
+    _loadFeed();
+  }
+
+  Future<void> _loadFeed() async {
+    final feed = await widget.storageService.getFeed(widget.article.feedId);
+    if (mounted) {
+      setState(() => _feed = feed);
+    }
   }
 
   Future<void> _loadContent() async {
@@ -37,9 +50,12 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     _fullContent = widget.article.content ?? widget.article.summary ?? '';
 
     if (_fullContent.isEmpty || _fullContent.length < 200) {
-      // TODO: 实现全文抓取
-      // final rssService = RssService();
-      // _fullContent = await rssService.fetchFullContent(widget.article.link);
+      try {
+        final rssService = RssService();
+        _fullContent = await rssService.fetchFullContent(widget.article.link);
+      } catch (e) {
+        debugPrint('Failed to fetch full content: $e');
+      }
     }
 
     setState(() => _isLoading = false);
@@ -51,7 +67,23 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   }
 
   void _openInBrowser() async {
-    // TODO: 使用 url_launcher 打开链接
+    final uri = Uri.parse(widget.article.link);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open link')),
+        );
+      }
+    }
+  }
+
+  void _shareArticle() async {
+    await Share.share(
+      '${widget.article.title}\n\n${widget.article.link}',
+      subject: widget.article.title,
+    );
   }
 
   void _showImagePreview(BuildContext context, String url) {
@@ -59,29 +91,110 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       context: context,
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black87,
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (BuildContext dialogContext, Animation animation, Animation secondaryAnimation) {
-        return GestureDetector(
-          onTap: () => Navigator.of(dialogContext).pop(),
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: Center(
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4.0,
-                child: Image.network(
-                  url,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const CircularProgressIndicator();
-                  },
-                  errorBuilder: (context, error, stack) {
-                    return const Icon(Icons.broken_image, color: Colors.white, size: 48);
-                  },
+      barrierColor: Colors.black.withValues(alpha: 0.95),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (BuildContext dialogContext, Animation animation,
+          Animation secondaryAnimation) {
+        return Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              // 点击关闭
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(dialogContext).pop(),
                 ),
               ),
-            ),
+              // 关闭按钮
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                  ),
+                ),
+              ),
+              // 图片预览
+              Center(
+                child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 5.0,
+                  panEnabled: true,
+                  boundaryMargin: const EdgeInsets.all(32),
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          child,
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              valueColor:
+                                  const AlwaysStoppedAnimation(Colors.white),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                    errorBuilder: (context, error, stack) {
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.broken_image,
+                              color: Colors.white, size: 64),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Failed to load image',
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      color: Colors.white70,
+                                    ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              // 操作提示
+              Positioned(
+                bottom: 32,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Pinch to zoom • Drag to pan',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.white70,
+                          ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -91,7 +204,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   // 处理 HTML 内容，为图片添加点击事件
   String _processHtmlWithImageClick(String html) {
     // 只添加点击链接，不修改 img 标签
-    return html.replaceAllMapped(RegExp(r'<img([^>]*?)src="([^"]+)"([^>]*?)>'), (match) {
+    return html.replaceAllMapped(RegExp(r'<img([^>]*?)src="([^"]+)"([^>]*?)>'),
+        (match) {
       final url = match.group(2) ?? '';
       final attrs = '${match.group(1) ?? ''}${match.group(3) ?? ''}';
       return '<a href="$url" class="image-link"><img$attrs></a>';
@@ -106,11 +220,14 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Article'),
+        title: Text(_feed?.title ?? 'Article',
+            maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             icon: Icon(
-              widget.article.isFavorite ? Icons.favorite : Icons.favorite_border,
+              widget.article.isFavorite
+                  ? Icons.favorite
+                  : Icons.favorite_border,
             ),
             onPressed: _toggleFavorite,
           ),
@@ -120,9 +237,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () {
-              // TODO: 实现分享
-            },
+            onPressed: _shareArticle,
           ),
         ],
       ),
@@ -136,9 +251,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                   children: [
                     Text(
                       widget.article.title,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -146,16 +262,22 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                         if (widget.article.author != null)
                           Text(
                             widget.article.author!,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
                           ),
                         const Spacer(),
                         Text(
                           _formatDate(widget.article.pubDate),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
                       ],
                     ),
@@ -176,6 +298,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                           ),
                           'a': Style(
                             color: Theme.of(context).colorScheme.primary,
+                          ),
+                          'img': Style(
+                            width: null,
+                            height: null,
                           ),
                         },
                         onAnchorTap: (url, _, __) {

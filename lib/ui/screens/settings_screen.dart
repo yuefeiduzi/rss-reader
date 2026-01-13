@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/backup_service.dart';
@@ -42,8 +43,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _performRestore() async {
-    // TODO: 实现文件选择和恢复
-    _showBackupResult('Restore feature coming soon');
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowedExtensions: ['json'],
+        type: FileType.custom,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        setState(() => _isLoading = true);
+        await _backupService.restoreFromJson(result.files.single.path!);
+        _showBackupResult('Restore successful! Please restart the app.');
+      }
+    } catch (e) {
+      _showBackupResult('Restore failed: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   void _showThemeDialog() {

@@ -33,6 +33,13 @@ dependencies:
   cached_network_image: ^3.2.3
   flutter_html: ^3.0.0-beta.2
 
+  # 外部链接和分享
+  url_launcher: ^6.2.0
+  share_plus: ^9.0.0
+
+  # 文件选择
+  file_picker: ^8.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
