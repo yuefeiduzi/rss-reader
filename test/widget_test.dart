@@ -7,24 +7,36 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:rss_reader/main.dart';
+import 'package:provider/provider.dart';
+import 'package:rss_reader/services/cache_service.dart';
+import 'package:rss_reader/services/storage_service.dart';
+import 'package:rss_reader/services/theme_service.dart';
+import 'package:rss_reader/ui/screens/home_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Home screen loads feeds list', (WidgetTester tester) async {
+    // Create mock services
+    final storageService = StorageService();
+    final cacheService = CacheService();
+    final themeService = ThemeService(storageService);
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Build our app and trigger a frame
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: themeService),
+        ],
+        child: MaterialApp(
+          home: HomeScreen(
+            storageService: storageService,
+            themeService: themeService,
+            cacheService: cacheService,
+          ),
+        ),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify that the app title is shown
+    expect(find.text('RSS Reader'), findsOneWidget);
   });
 }

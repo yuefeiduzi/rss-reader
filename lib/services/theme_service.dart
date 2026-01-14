@@ -47,6 +47,8 @@ class ThemeService extends ChangeNotifier {
         seedColor: Colors.blue,
         brightness: Brightness.light,
       ),
+      // 使用系统默认字体，避免加载重复资源
+      fontFamily: null,
       cardTheme: CardThemeData(
         elevation: 1,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -70,6 +72,8 @@ class ThemeService extends ChangeNotifier {
         seedColor: Colors.blue,
         brightness: Brightness.dark,
       ),
+      // 使用系统默认字体，避免加载重复资源
+      fontFamily: null,
       cardTheme: CardThemeData(
         elevation: 1,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

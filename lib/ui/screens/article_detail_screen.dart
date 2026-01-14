@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/article.dart';
 import '../../models/feed.dart';
+import '../../services/cache_service.dart';
 import '../../services/rss_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
@@ -13,12 +14,14 @@ class ArticleDetailScreen extends StatefulWidget {
   final Article article;
   final StorageService storageService;
   final ThemeService themeService;
+  final CacheService cacheService;
 
   const ArticleDetailScreen({
     super.key,
     required this.article,
     required this.storageService,
     required this.themeService,
+    required this.cacheService,
   });
 
   @override
@@ -29,10 +32,12 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   bool _isLoading = true;
   String _fullContent = '';
   Feed? _feed;
+  late bool _isFavorite;
 
   @override
   void initState() {
     super.initState();
+    _isFavorite = widget.article.isFavorite;
     _loadContent();
     _loadFeed();
   }
@@ -50,31 +55,18 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     // 使用缓存的内容或摘要
     _fullContent = widget.article.content ?? widget.article.summary ?? '';
 
-    // 调试日志：打印内容长度和图片信息
-    final imageRegex = RegExp(r'<img[^>]+src="([^"]+)"', caseSensitive: false);
-    final images = imageRegex.allMatches(_fullContent).map((m) => m.group(1)).whereType<String>().toList();
-    debugPrint('=== Article Detail Debug ===');
-    debugPrint('Title: ${widget.article.title}');
-    debugPrint('Content length: ${_fullContent.length}');
-    debugPrint('Content source: ${widget.article.content != null ? 'cache content' : (widget.article.summary != null ? 'cache summary' : 'empty')}');
-    debugPrint('Images found: ${images.length}');
-    for (var i = 0; i < images.length; i++) {
-      debugPrint('  Image $i: ${images[i]}');
-    }
-    debugPrint('===========================');
+    debugPrint('[加载缓存] 加载文章内容: ${widget.article.title}');
 
     if (_fullContent.isEmpty || _fullContent.length < 200) {
       try {
+        debugPrint('[动作] 抓取文章全文: ${widget.article.link}');
         final rssService = RssService();
         _fullContent = await rssService.fetchFullContent(widget.article.link);
-        // 打印抓取后的内容
-        final imagesAfter = imageRegex.allMatches(_fullContent).map((m) => m.group(1)).whereType<String>().toList();
-        debugPrint('After fetch - Images found: ${imagesAfter.length}');
-        for (var i = 0; i < imagesAfter.length; i++) {
-          debugPrint('  Image $i: ${imagesAfter[i]}');
-        }
+        // 缓存文章内容
+        await widget.cacheService.cacheArticleContent(widget.article.id, _fullContent);
+        debugPrint('[成功] 全文抓取完成, 内容长度: ${_fullContent.length}');
       } catch (e) {
-        debugPrint('Failed to fetch full content: $e');
+        debugPrint('[错误] 全文抓取失败: $e');
       }
     }
 
@@ -83,7 +75,9 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   void _toggleFavorite() async {
     await widget.storageService.toggleFavorite(widget.article.id);
-    // Note: UI will refresh when returning to list
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
   }
 
   void _openInBrowser() async {
@@ -223,14 +217,17 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isWideScreen = MediaQuery.of(context).size.width >= 900;
+
     return Scaffold(
       appBar: AppBar(
+        leading: isWideScreen ? null : const BackButton(),
         title: Text(_feed?.title ?? 'Article',
             maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             icon: Icon(
-              widget.article.isFavorite
+              _isFavorite
                   ? Icons.favorite
                   : Icons.favorite_border,
             ),

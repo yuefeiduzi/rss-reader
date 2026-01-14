@@ -33,7 +33,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
   Future<void> _validateAndAdd() async {
     final url = _controller.text.trim();
     if (url.isEmpty) {
-      setState(() => _error = 'Please enter a URL');
+      setState(() => _error = '请输入订阅源地址');
       return;
     }
 
@@ -41,7 +41,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
     try {
       final uri = Uri.parse(url);
       if (!uri.isAbsolute) {
-        setState(() => _error = 'Please enter a valid URL');
+        setState(() => _error = '请输入有效的 URL 地址');
         return;
       }
       // 自动补全 http:// 前缀
@@ -49,7 +49,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
         _controller.text = 'https://$url';
       }
     } catch (e) {
-      setState(() => _error = 'Invalid URL format');
+      setState(() => _error = 'URL 格式无效');
       return;
     }
 
@@ -64,7 +64,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
       await widget.onAdd(finalUrl);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      setState(() => _error = 'Failed to add feed: ${e.toString()}');
+      setState(() => _error = '添加订阅源失败: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -73,6 +73,19 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
   void _selectPreset(String url) {
     _controller.text = url;
     _validateAndAdd();
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    try {
+      final clipboardData = await Clipboard.getData('text/plain');
+      if (clipboardData != null && clipboardData.text != null) {
+        _controller.text = clipboardData.text!;
+        setState(() => _error = null);
+      }
+    } catch (e) {
+      // 剪贴板访问失败，尝试使用快捷键提示
+      debugPrint('Clipboard access failed: $e');
+    }
   }
 
   @override
@@ -92,7 +105,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
             ),
           ),
           const SizedBox(width: 12),
-          const Text('Add RSS Feed'),
+          const Text('添加订阅源'),
         ],
       ),
       content: SizedBox(
@@ -105,7 +118,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
             TextField(
               controller: _controller,
               decoration: InputDecoration(
-                labelText: 'Feed URL',
+                labelText: '订阅源地址',
                 hintText: 'https://example.com/feed.xml',
                 prefixIcon: const Icon(Icons.link),
                 suffixIcon: Row(
@@ -121,14 +134,8 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
                       ),
                     IconButton(
                       icon: const Icon(Icons.paste),
-                      tooltip: 'Paste from clipboard',
-                      onPressed: () async {
-                        final clipboard = await Clipboard.getData('text/plain');
-                        if (clipboard != null && clipboard.text != null) {
-                          _controller.text = clipboard.text!;
-                          setState(() => _error = null);
-                        }
-                      },
+                      tooltip: '从剪贴板粘贴',
+                      onPressed: _isLoading ? null : _pasteFromClipboard,
                     ),
                   ],
                 ),
@@ -196,7 +203,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Quick add',
+                      '快速添加',
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -225,7 +232,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
       actions: [
         TextButton(
           onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: const Text('取消'),
         ),
         FilledButton.icon(
           onPressed: _isLoading ? null : _validateAndAdd,
@@ -236,7 +243,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.add),
-          label: const Text('Add'),
+          label: const Text('添加'),
         ),
       ],
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
