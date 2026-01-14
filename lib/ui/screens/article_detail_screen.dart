@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_html/flutter_html.dart';
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/article.dart';
@@ -49,10 +50,29 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     // 使用缓存的内容或摘要
     _fullContent = widget.article.content ?? widget.article.summary ?? '';
 
+    // 调试日志：打印内容长度和图片信息
+    final imageRegex = RegExp(r'<img[^>]+src="([^"]+)"', caseSensitive: false);
+    final images = imageRegex.allMatches(_fullContent).map((m) => m.group(1)).whereType<String>().toList();
+    debugPrint('=== Article Detail Debug ===');
+    debugPrint('Title: ${widget.article.title}');
+    debugPrint('Content length: ${_fullContent.length}');
+    debugPrint('Content source: ${widget.article.content != null ? 'cache content' : (widget.article.summary != null ? 'cache summary' : 'empty')}');
+    debugPrint('Images found: ${images.length}');
+    for (var i = 0; i < images.length; i++) {
+      debugPrint('  Image $i: ${images[i]}');
+    }
+    debugPrint('===========================');
+
     if (_fullContent.isEmpty || _fullContent.length < 200) {
       try {
         final rssService = RssService();
         _fullContent = await rssService.fetchFullContent(widget.article.link);
+        // 打印抓取后的内容
+        final imagesAfter = imageRegex.allMatches(_fullContent).map((m) => m.group(1)).whereType<String>().toList();
+        debugPrint('After fetch - Images found: ${imagesAfter.length}');
+        for (var i = 0; i < imagesAfter.length; i++) {
+          debugPrint('  Image $i: ${imagesAfter[i]}');
+        }
       } catch (e) {
         debugPrint('Failed to fetch full content: $e');
       }
@@ -201,21 +221,6 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     );
   }
 
-  // 处理 HTML 内容，为图片添加点击事件
-  String _processHtmlWithImageClick(String html) {
-    // 只添加点击链接，不修改 img 标签
-    return html.replaceAllMapped(RegExp(r'<img([^>]*?)src="([^"]+)"([^>]*?)>'),
-        (match) {
-      final url = match.group(2) ?? '';
-      final attrs = '${match.group(1) ?? ''}${match.group(3) ?? ''}';
-      return '<a href="$url" class="image-link"><img$attrs></a>';
-    }).replaceAllMapped(RegExp(r"<img([^>]*?)src='([^']+)'([^>]*?)>"), (match) {
-      final url = match.group(2) ?? '';
-      final attrs = '${match.group(1) ?? ''}${match.group(3) ?? ''}';
-      return "<a href=\"$url\" class=\"image-link\"><img$attrs></a>";
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -282,34 +287,9 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                       ],
                     ),
                     const Divider(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: Html(
-                        data: _processHtmlWithImageClick(_fullContent),
-                        style: {
-                          'body': Style(
-                            fontSize: FontSize(16),
-                            lineHeight: LineHeight(1.6),
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                          'p': Style(
-                            margin: Margins.zero,
-                            padding: HtmlPaddings.zero,
-                          ),
-                          'a': Style(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          'img': Style(
-                            width: null,
-                            height: null,
-                          ),
-                        },
-                        onAnchorTap: (url, _, __) {
-                          if (url != null) {
-                            _showImagePreview(context, url);
-                          }
-                        },
-                      ),
+                    _HtmlContent(
+                      html: _fullContent,
+                      onImageTap: (url) => _showImagePreview(context, url),
                     ),
                   ],
                 ),
@@ -320,5 +300,216 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+}
+
+/// 自定义 HTML 内容组件，支持图片显示
+class _HtmlContent extends StatelessWidget {
+  final String html;
+  final void Function(String url) onImageTap;
+
+  const _HtmlContent({required this.html, required this.onImageTap});
+
+  @override
+  Widget build(BuildContext context) {
+    // 解析 HTML 文档
+    final document = html_parser.parse(html);
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 800),
+      child: _buildContent(context, document.body!),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, dom.Element node) {
+    final widgets = <Widget>[];
+    for (final child in node.nodes) {
+      final widget = _buildNode(context, child);
+      if (widget != null) {
+        widgets.add(widget);
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
+  Widget? _buildNode(BuildContext context, dom.Node node) {
+    if (node.nodeType == dom.Node.TEXT_NODE) {
+      final text = (node as dom.Text).data.trim();
+      if (text.isEmpty) return null;
+      return Text(text);
+    }
+
+    if (node is! dom.Element) return null;
+
+    final tag = node.localName?.toLowerCase() ?? '';
+
+    switch (tag) {
+      case 'p':
+        final widgets = <Widget>[];
+        for (final child in node.nodes) {
+          final widget = _buildNode(context, child);
+          if (widget != null) widgets.add(widget);
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: widgets,
+          ),
+        );
+
+      case 'img':
+        final src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
+        if (src.isEmpty) return const SizedBox.shrink();
+
+        return GestureDetector(
+          onTap: () => onImageTap(src),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Image.network(
+              src,
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(child: CircularProgressIndicator());
+              },
+              errorBuilder: (context, error, stack) => const Icon(Icons.broken_image),
+            ),
+          ),
+        );
+
+      case 'a':
+        final href = node.attributes['href'] ?? '';
+        final text = _extractText(node);
+
+        if (href.startsWith('http') && text.isNotEmpty) {
+          return GestureDetector(
+            onTap: () => onImageTap(href),
+            child: Text(
+              text,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          );
+        }
+        return Text(text);
+
+      case 'br':
+        return const SizedBox(height: 8);
+
+      case 'strong':
+      case 'b':
+        final text = _extractText(node);
+        return Text(text, style: const TextStyle(fontWeight: FontWeight.bold));
+
+      case 'em':
+      case 'i':
+        final text = _extractText(node);
+        return Text(text, style: const TextStyle(fontStyle: FontStyle.italic));
+
+      case 'blockquote':
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            _extractText(node),
+            style: TextStyle(
+              fontStyle: FontStyle.italic,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
+
+      case 'h1':
+        final text = _extractText(node);
+        return Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 8),
+          child: Text(text, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+        );
+
+      case 'h2':
+        final text = _extractText(node);
+        return Padding(
+          padding: const EdgeInsets.only(top: 14, bottom: 6),
+          child: Text(text, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+        );
+
+      case 'h3':
+        final text = _extractText(node);
+        return Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
+          child: Text(text, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+        );
+
+      case 'ul':
+        final widgets = <Widget>[];
+        for (final child in node.nodes) {
+          final widget = _buildNode(context, child);
+          if (widget != null) widgets.add(widget);
+        }
+        return Padding(
+          padding: const EdgeInsets.only(left: 16, bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: widgets,
+          ),
+        );
+
+      case 'li':
+        final text = _extractText(node);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('• '),
+              Expanded(child: Text(text)),
+            ],
+          ),
+        );
+
+      case 'code':
+        final text = _extractText(node);
+        return Text(text, style: const TextStyle(
+          fontFamily: 'monospace',
+          backgroundColor: Colors.grey,
+        ));
+
+      case 'pre':
+        final text = _extractText(node);
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Text(text, style: const TextStyle(
+            fontFamily: 'monospace',
+            backgroundColor: Colors.grey,
+          )),
+        );
+
+      default:
+        final widgets = <Widget>[];
+        for (final child in node.nodes) {
+          final widget = _buildNode(context, child);
+          if (widget != null) widgets.add(widget);
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: widgets,
+        );
+    }
+  }
+
+  String _extractText(dom.Node node) {
+    if (node.nodeType == dom.Node.TEXT_NODE) {
+      return (node as dom.Text).data;
+    }
+    if (node is dom.Element) {
+      return node.nodes.map((child) => _extractText(child)).join('');
+    }
+    return '';
   }
 }

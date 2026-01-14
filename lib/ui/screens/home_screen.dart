@@ -238,6 +238,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 宽屏分栏布局（macOS/Windows/Web）
   Widget _buildWideScreenLayout() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 左侧面板宽度：根据屏幕宽度动态调整
+    final leftPanelWidth = screenWidth > 1400 ? 320 : (screenWidth > 1200 ? 280 : 250);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('RSS Reader'),
@@ -261,13 +265,13 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Row(
         children: [
-          // 左侧：订阅源列表 (1/3)
+          // 左侧：订阅源列表
           SizedBox(
-            width: 300,
+            width: leftPanelWidth.toDouble(),
             child: _buildFeedListPanel(),
           ),
           const VerticalDivider(width: 1),
-          // 右侧：文章列表或文章内容 (2/3)
+          // 右侧：文章列表或文章内容
           Expanded(
             child: _selectedArticle != null
                 ? ArticleDetailScreen(
