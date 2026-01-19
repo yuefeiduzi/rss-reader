@@ -226,7 +226,7 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
   }
 }
 
-class ArticleCard extends StatelessWidget {
+class ArticleCard extends StatefulWidget {
   final Article article;
   final VoidCallback onTap;
   final VoidCallback onFavorite;
@@ -238,7 +238,34 @@ class ArticleCard extends StatelessWidget {
     required this.onFavorite,
   });
 
-  // 提取纯文本摘要（100字）
+  @override
+  State<ArticleCard> createState() => _ArticleCardState();
+}
+
+class _ArticleCardState extends State<ArticleCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // 提取纯文本摘要（120字）
   String _getSummaryText(String? html) {
     if (html == null) return '';
     final text = html
@@ -250,168 +277,7 @@ class ArticleCard extends StatelessWidget {
         .replaceAll(RegExp(r'&quot;'), '"')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    return text.length > 100 ? text.substring(0, 100) + '...' : text;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 标题行
-              Row(
-                children: [
-                  // 未读标记
-                  if (!article.isRead)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  // 标签
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: article.isRead
-                          ? Colors.grey.withValues(alpha: 0.3)
-                          : Colors.blue.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      article.isRead ? '已读' : '未读',
-                      style: TextStyle(
-                        color: article.isRead
-                            ? Colors.grey[700]
-                            : Colors.blue[700],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // 有头图时只显示头图
-              if (article.imageUrl != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    article.imageUrl!,
-                    height: 160,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                )
-              // 没有头图时显示文字简介
-              else if (article.summary != null && article.summary!.isNotEmpty)
-                Text(
-                  _getSummaryText(article.summary),
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                  ),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '暂无预览',
-                    style: TextStyle(
-                      color: Colors.grey[400],
-                      fontStyle: FontStyle.italic,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              // 有头图时在标题下显示简短摘要
-              if (article.imageUrl != null &&
-                  article.summary != null &&
-                  article.summary!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    _getSummaryText(article.summary),
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      article.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      article.isFavorite
-                          ? Icons.favorite
-                          : Icons.favorite_border,
-                      color: article.isFavorite
-                          ? Colors.red
-                          : Colors.grey[400],
-                      size: 20,
-                    ),
-                    onPressed: onFavorite,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-              if (article.author != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        article.author!,
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        _formatDate(article.pubDate),
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return text.length > 120 ? text.substring(0, 120) + '...' : text;
   }
 
   String _formatDate(DateTime date) {
@@ -427,5 +293,247 @@ class ArticleCard extends StatelessWidget {
     } else {
       return '${date.year}-${date.month}-${date.day}';
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTapDown: (_) => _controller.forward(),
+        onTapUp: (_) => _controller.reverse(),
+        onTapCancel: () => _controller.reverse(),
+        onTap: widget.onTap,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _scaleAnimation.value,
+              child: child,
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (isDark ? Colors.black : Colors.grey[200]!)
+                      .withValues(alpha: isDark ? 0.3 : 0.5),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 头图
+                if (widget.article.imageUrl != null)
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                    child: Stack(
+                      children: [
+                        Image.network(
+                          widget.article.imageUrl!,
+                          height: 180,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const SizedBox.shrink();
+                          },
+                        ),
+                        // 未读标记
+                        if (!widget.article.isRead)
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    theme.colorScheme.secondary,
+                                    theme.colorScheme.secondary
+                                        .withValues(alpha: 0.8),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                '未读',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                // 无头图时的内容区域
+                if (widget.article.imageUrl == null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Row(
+                      children: [
+                        if (!widget.article.isRead)
+                          Container(
+                            width: 8,
+                            height: 8,
+                            margin: const EdgeInsets.only(right: 10),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  theme.colorScheme.secondary,
+                                  theme.colorScheme.secondary.withValues(alpha: 0.7),
+                                ],
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        if (!widget.article.isRead)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  theme.colorScheme.secondary,
+                                  theme.colorScheme.secondary.withValues(alpha: 0.8),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              '未读',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                // 内容区域
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 标题
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.article.title,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: widget.article.isRead
+                                    ? FontWeight.w500
+                                    : FontWeight.w600,
+                                color: theme.colorScheme.onSurface,
+                                height: 1.4,
+                                letterSpacing: -0.2,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: widget.onFavorite,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: Icon(
+                                widget.article.isFavorite
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                key: ValueKey(widget.article.isFavorite),
+                                color: widget.article.isFavorite
+                                    ? const Color(0xFFE57373)
+                                    : theme.colorScheme.outline,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // 摘要
+                      if (widget.article.summary != null &&
+                          widget.article.summary!.isNotEmpty)
+                        Text(
+                          _getSummaryText(widget.article.summary),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            height: 1.5,
+                          ),
+                          maxLines: widget.article.imageUrl != null ? 2 : 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      const SizedBox(height: 12),
+                      // 作者和时间
+                      Row(
+                        children: [
+                          if (widget.article.author != null)
+                            Text(
+                              widget.article.author!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.tertiary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          if (widget.article.author != null)
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 8),
+                              width: 4,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.outline,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          Text(
+                            _formatDate(widget.article.pubDate),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

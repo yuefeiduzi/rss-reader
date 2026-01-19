@@ -26,7 +26,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _showBackupResult(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 
@@ -38,7 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       _showBackupResult('Backup failed: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -57,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       _showBackupResult('Restore failed: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -65,42 +69,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Theme'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.brightness_auto),
-              title: const Text('System'),
-              trailing: widget.themeService.themeMode == ThemeMode.system
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () {
-                widget.themeService.setThemeMode(ThemeMode.system);
-                Navigator.of(context).pop();
-              },
+            _buildThemeOption(
+              context,
+              'System',
+              Icons.brightness_auto,
+              ThemeMode.system,
             ),
-            ListTile(
-              leading: const Icon(Icons.light_mode),
-              title: const Text('Light'),
-              trailing: widget.themeService.themeMode == ThemeMode.light
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () {
-                widget.themeService.setThemeMode(ThemeMode.light);
-                Navigator.of(context).pop();
-              },
+            _buildThemeOption(
+              context,
+              'Light',
+              Icons.light_mode,
+              ThemeMode.light,
             ),
-            ListTile(
-              leading: const Icon(Icons.dark_mode),
-              title: const Text('Dark'),
-              trailing: widget.themeService.themeMode == ThemeMode.dark
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () {
-                widget.themeService.setThemeMode(ThemeMode.dark);
-                Navigator.of(context).pop();
-              },
+            _buildThemeOption(
+              context,
+              'Dark',
+              Icons.dark_mode,
+              ThemeMode.dark,
             ),
           ],
         ),
@@ -108,62 +96,269 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildThemeOption(
+    BuildContext context,
+    String title,
+    IconData icon,
+    ThemeMode mode,
+  ) {
+    final isSelected = widget.themeService.themeMode == mode;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          widget.themeService.setThemeMode(mode);
+          Navigator.of(context).pop();
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isSelected
+                        ? [
+                            Theme.of(context).colorScheme.secondary,
+                            Theme.of(context)
+                                .colorScheme
+                                .secondary
+                                .withValues(alpha: 0.8),
+                          ]
+                        : [
+                            Theme.of(context).colorScheme.surfaceVariant,
+                            Theme.of(context).colorScheme.surfaceVariant,
+                          ],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  icon,
+                  color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              if (isSelected)
+                Icon(
+                  Icons.check_circle,
+                  color: Theme.of(context).colorScheme.secondary,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // 外观
-          const Text(
-            'Appearance',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+      appBar: AppBar(
+        title: const Text(
+          'Settings',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
           ),
-          ListTile(
-            leading: const Icon(Icons.brightness_6),
-            title: const Text('Theme'),
-            subtitle: Text(
-              widget.themeService.themeMode == ThemeMode.dark
-                  ? 'Dark'
-                  : widget.themeService.themeMode == ThemeMode.light
-                      ? 'Light'
-                      : 'System',
-            ),
-            onTap: _showThemeDialog,
-          ),
-          const Divider(),
+        ),
+        centerTitle: false,
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            // 外观 Section
+            _buildSectionHeader(theme, 'Appearance'),
+            _buildSectionCard(theme, [
+              _buildSettingItem(
+                theme,
+                icon: Icons.brightness_6,
+                iconColor: const Color(0xFF8B7355),
+                title: 'Theme',
+                subtitle: widget.themeService.themeMode == ThemeMode.dark
+                    ? 'Dark'
+                    : widget.themeService.themeMode == ThemeMode.light
+                        ? 'Light'
+                        : 'System',
+                onTap: _showThemeDialog,
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // 同步与备份
-          const Text(
-            'Sync & Backup',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
-          ),
-          ListTile(
-            leading: const Icon(Icons.backup),
-            title: const Text('Backup Now'),
-            subtitle: const Text('Export feeds and articles to local file'),
-            onTap: _isLoading ? null : _performBackup,
-          ),
-          ListTile(
-            leading: const Icon(Icons.restore),
-            title: const Text('Restore'),
-            subtitle: const Text('Import from backup file'),
-            onTap: _performRestore,
-          ),
-          const Divider(),
+            // 同步与备份 Section
+            _buildSectionHeader(theme, 'Sync & Backup'),
+            _buildSectionCard(theme, [
+              _buildSettingItem(
+                theme,
+                icon: Icons.backup,
+                iconColor: const Color(0xFF6B7A6B),
+                title: 'Backup Now',
+                subtitle: 'Export feeds and articles to local file',
+                onTap: _isLoading ? null : _performBackup,
+                isLoading: _isLoading,
+              ),
+              const Divider(height: 1, indent: 60),
+              _buildSettingItem(
+                theme,
+                icon: Icons.restore,
+                iconColor: const Color(0xFF7A6B8B),
+                title: 'Restore',
+                subtitle: 'Import from backup file',
+                onTap: _performRestore,
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // 关于
-          const Text(
-            'About',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+            // 关于 Section
+            _buildSectionHeader(theme, 'About'),
+            _buildSectionCard(theme, [
+              _buildSettingItem(
+                theme,
+                icon: Icons.info_outline,
+                iconColor: const Color(0xFF8C8C8C),
+                title: 'Version',
+                subtitle: '1.0.0',
+                onTap: null,
+              ),
+            ]),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(ThemeData theme, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 20, bottom: 12),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.secondary,
+          letterSpacing: 0.5,
+          textBaseline: TextBaseline.alphabetic,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard(ThemeData theme, List<Widget> children) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildSettingItem(
+    ThemeData theme, {
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback? onTap,
+    bool isLoading = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      iconColor.withValues(alpha: 0.8),
+                      iconColor.withValues(alpha: 0.6),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurface,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isLoading)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: theme.colorScheme.secondary,
+                  ),
+                )
+              else if (onTap != null)
+                Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.outline,
+                  size: 22,
+                ),
+            ],
           ),
-          const ListTile(
-            leading: Icon(Icons.info),
-            title: Text('Version'),
-            subtitle: Text('1.0.0'),
-          ),
-        ],
+        ),
       ),
     );
   }
