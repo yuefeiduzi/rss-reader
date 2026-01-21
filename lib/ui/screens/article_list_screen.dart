@@ -46,6 +46,8 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
       debugPrint('[加载缓存] 加载订阅源文章: ${widget.feed.title}');
       final local =
           await widget.storageService.getArticlesByFeed(widget.feed.id);
+      // 按发布时间倒序排序
+      local.sort((a, b) => b.pubDate.compareTo(a.pubDate));
       if (mounted) {
         setState(() {
           _articles = local;
@@ -76,6 +78,8 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
       // 重新加载本地数据
       final local =
           await widget.storageService.getArticlesByFeed(widget.feed.id);
+      // 按发布时间倒序排序
+      local.sort((a, b) => b.pubDate.compareTo(a.pubDate));
       if (mounted) {
         setState(() {
           _articles = local;
@@ -93,14 +97,39 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
     }
   }
 
-  Future<void> _clearCacheAndRefresh() async {
-    debugPrint('[动作] 清除缓存并刷新: ${widget.feed.title}');
-    await widget.cacheService.clearAllCache();
-    await _refreshArticles();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cache cleared and refreshing...')),
-      );
+  Future<void> _forceRefresh() async {
+    setState(() => _isRefreshing = true);
+    try {
+      debugPrint('[动作] 强制刷新订阅源: ${widget.feed.title}');
+      // 清除该订阅源的缓存文章
+      await widget.storageService.clearArticlesByFeed(widget.feed.id);
+      // 重新拉取
+      final rssService = RssService();
+      final newArticles = await rssService.fetchArticles(widget.feed);
+      debugPrint('[成功] 获取到 ${newArticles.length} 篇文章');
+      await widget.storageService.addArticles(newArticles);
+      // 重新加载本地数据
+      final local =
+          await widget.storageService.getArticlesByFeed(widget.feed.id);
+      // 按发布时间倒序排序
+      local.sort((a, b) => b.pubDate.compareTo(a.pubDate));
+      if (mounted) {
+        setState(() {
+          _articles = local;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('强制刷新完成')),
+        );
+      }
+    } catch (e) {
+      debugPrint('[错误] 强制刷新失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('强制刷新失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
     }
   }
 
@@ -143,30 +172,17 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
         title: Text(widget.feed.title,
             maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          // 刷新按钮
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _isRefreshing ? null : _refreshArticles,
-            tooltip: 'Refresh',
+            tooltip: '刷新',
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'clear_cache') {
-                _clearCacheAndRefresh();
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'clear_cache',
-                child: Row(
-                  children: const [
-                    Icon(Icons.delete_outline),
-                    SizedBox(width: 8),
-                    Text('Clear Cache & Refresh'),
-                  ],
-                ),
-              ),
-            ],
+          // 强制刷新按钮
+          IconButton(
+            icon: const Icon(Icons.restart_alt),
+            onPressed: _isRefreshing ? null : _forceRefresh,
+            tooltip: '强制刷新',
           ),
         ],
       ),
@@ -280,7 +296,7 @@ class _ArticleCardState extends State<ArticleCard>
     return text.length > 120 ? text.substring(0, 120) + '...' : text;
   }
 
-  String _formatDate(DateTime date) {
+  String _formatRelativeDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
 
@@ -291,8 +307,12 @@ class _ArticleCardState extends State<ArticleCard>
     } else if (diff.inDays < 7) {
       return '${diff.inDays}天前';
     } else {
-      return '${date.year}-${date.month}-${date.day}';
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     }
+  }
+
+  String _formatDateTime(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -495,34 +515,64 @@ class _ArticleCardState extends State<ArticleCard>
                           overflow: TextOverflow.ellipsis,
                         ),
                       const SizedBox(height: 12),
-                      // 作者和时间
-                      Row(
+                      // 作者、发布时间、拉取时间
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (widget.article.author != null)
-                            Text(
-                              widget.article.author!,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: theme.colorScheme.tertiary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          if (widget.article.author != null)
-                            Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 8),
-                              width: 4,
-                              height: 4,
-                              decoration: BoxDecoration(
+                          // 第一行：作者
+                          Row(
+                            children: [
+                              if (widget.article.author != null)
+                                Text(
+                                  widget.article.author!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.tertiary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          // 第二行：发布时间 + 拉取时间
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.rss_feed,
+                                size: 12,
                                 color: theme.colorScheme.outline,
-                                shape: BoxShape.circle,
                               ),
-                            ),
-                          Text(
-                            _formatDate(widget.article.pubDate),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatRelativeDate(widget.article.pubDate),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 8),
+                                width: 3,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.outline,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              Icon(
+                                Icons.edit,
+                                size: 11,
+                                color: theme.colorScheme.outline,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatDateTime(widget.article.cachedAt),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.outline,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

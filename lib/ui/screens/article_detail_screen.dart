@@ -259,27 +259,55 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                               ),
                     ),
                     const SizedBox(height: 12),
+                    // 作者信息
+                    if (widget.article.author != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          widget.article.author!,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                      ),
+                    // 发布时间和拉取时间
                     Row(
                       children: [
-                        if (widget.article.author != null)
-                          Text(
-                            widget.article.author!,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                          ),
-                        const Spacer(),
+                        Icon(
+                          Icons.rss_feed,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        const SizedBox(width: 4),
                         Text(
-                          _formatDate(widget.article.pubDate),
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
+                          _formatDateTime(widget.article.pubDate),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          width: 3,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.outline,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Icon(
+                          Icons.edit,
+                          size: 12,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatDateTime(widget.article.cachedAt),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
                         ),
                       ],
                     ),
@@ -295,8 +323,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  String _formatDateTime(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -333,6 +361,7 @@ class _HtmlContent extends StatelessWidget {
   }
 
   Widget? _buildNode(BuildContext context, dom.Node node) {
+    final theme = Theme.of(context);
     if (node.nodeType == dom.Node.TEXT_NODE) {
       final text = (node as dom.Text).data.trim();
       if (text.isEmpty) return null;
@@ -472,19 +501,47 @@ class _HtmlContent extends StatelessWidget {
 
       case 'code':
         final text = _extractText(node);
-        return Text(text, style: const TextStyle(
-          fontFamily: 'monospace',
-          backgroundColor: Colors.grey,
-        ));
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 13,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
 
       case 'pre':
         final text = _extractText(node);
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Text(text, style: const TextStyle(
-            fontFamily: 'monospace',
-            backgroundColor: Colors.grey,
-          )),
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.all(12),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: theme.colorScheme.outline.withValues(alpha: 0.3),
+            ),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Text(
+              text,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.5,
+              ),
+            ),
+          ),
         );
 
       default:

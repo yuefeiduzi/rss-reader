@@ -33,7 +33,7 @@ lib/
 ├── main.dart              # App entry point, theme setup
 ├── models/                # Data models (Article, Feed, Config)
 ├── services/              # Business logic services
-│   ├── rss_service.dart       # RSS/Atom parsing
+│   ├── rss_service.dart       # RSS/Atom parsing (pubDate, dc:date support)
 │   ├── storage_service.dart   # Local storage (SharedPreferences)
 │   ├── cache_service.dart     # Cache management
 │   ├── theme_service.dart     # Theme management
@@ -41,6 +41,10 @@ lib/
 └── ui/                    # Presentation layer
     ├── screens/           # Page components
     └── components/        # Reusable widgets
+        ├── add_feed_dialog.dart   # Add feed dialog
+        ├── edit_feed_dialog.dart  # Edit feed name dialog
+        ├── feed_list_tile.dart    # Feed list tile with swipe/long-press/menu
+        └── responsive_layout.dart # Adaptive layout
 ```
 
 ## Code Conventions
@@ -48,7 +52,7 @@ lib/
 ### Dart/Flutter
 - Use `const` constructors where possible
 - Prefer `const` declarations for static values
-- Avoid `print()` statements in production code
+- Avoid `print()` statements in production code (use debugPrint)
 - Follow Material 3 design guidelines
 - Use Provider for state management
 
@@ -76,5 +80,17 @@ lib/
 ## Platform-Specific Notes
 
 - **Web**: Share functionality uses Web Share API
-- **Desktop**: Supports file picker for backup import/export
+- **Desktop**: Supports file picker for backup import/export, right-click context menus
 - **Mobile**: Optimized for touch interactions
+
+## Recent Changes
+
+### Feed List Interactions
+- Added `more_vert` button for all platforms
+- Added long-press context menu (500ms)
+- Added right-click menu (macOS/Windows)
+- Swipe actions preserved for touch devices
+
+### RSS Parsing
+- Supports both `pubDate` and `dc:date` formats
+- Articles sorted by pubDate in descending order

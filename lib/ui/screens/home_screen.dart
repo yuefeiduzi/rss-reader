@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../components/add_feed_dialog.dart';
+import '../components/edit_feed_dialog.dart';
 import '../components/feed_list_tile.dart';
 import '../components/responsive_layout.dart';
 import '../../models/feed.dart';
@@ -34,6 +35,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   Feed? _selectedFeed;
   Article? _selectedArticle;
+  double _sidebarWidth = 280;
+  final double _minSidebarWidth = 200;
+  final double _maxSidebarWidth = 450;
 
   @override
   void initState() {
@@ -65,14 +69,21 @@ class _HomeScreenState extends State<HomeScreen> {
     debugPrint('[动作] 加载订阅源列表: ${feeds.length} 个订阅源');
   }
 
-  Future<void> _addFeed(String url) async {
+  Future<void> _addFeed(String url, String? customName) async {
     debugPrint('[动作] 添加订阅源: $url');
     try {
       final rssService = RssService();
       final feed = await rssService.fetchFeed(url);
-      await widget.storageService.addFeed(feed);
+      // 如果有自定义名称，设置到 feed 中
+      if (customName != null && customName.isNotEmpty) {
+        final updatedFeed = feed.copyWith(customName: customName);
+        await widget.storageService.addFeed(updatedFeed);
+        debugPrint('[成功] 添加订阅源成功: $customName (${feed.title})');
+      } else {
+        await widget.storageService.addFeed(feed);
+        debugPrint('[成功] 添加订阅源成功: ${feed.title}');
+      }
       await _loadFeeds();
-      debugPrint('[成功] 添加订阅源成功: ${feed.title}');
     } catch (e) {
       debugPrint('[错误] 添加订阅源失败: $e');
       if (mounted) {
@@ -84,6 +95,32 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }
+    }
+  }
+
+  void _editFeedName(Feed feed) {
+    showDialog(
+      context: context,
+      builder: (context) => EditFeedDialog(
+        feed: feed,
+        onSave: (newName) => _updateFeedName(feed, newName),
+      ),
+    );
+  }
+
+  Future<void> _updateFeedName(Feed feed, String newName) async {
+    debugPrint('[动作] 修改订阅源名称: ${feed.displayTitle} -> $newName');
+    final updatedFeed = feed.copyWith(customName: newName);
+    await widget.storageService.updateFeed(updatedFeed);
+    await _loadFeeds();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已更新名称为 "$newName"'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
@@ -243,7 +280,10 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(
           context: context,
-          builder: (ctx) => AddFeedDialog(onAdd: _addFeed),
+          builder: (ctx) => AddFeedDialog(
+            onAdd: _addFeed,
+            existingUrls: _feeds.map((f) => f.url).toList(),
+          ),
         ),
         icon: const Icon(Icons.add),
         label: const Text('添加订阅源'),
@@ -367,7 +407,10 @@ class _HomeScreenState extends State<HomeScreen> {
             FilledButton.icon(
               onPressed: () => showDialog(
                 context: context,
-                builder: (ctx) => AddFeedDialog(onAdd: _addFeed),
+                builder: (ctx) => AddFeedDialog(
+                  onAdd: _addFeed,
+                  existingUrls: _feeds.map((f) => f.url).toList(),
+                ),
               ),
               icon: const Icon(Icons.add),
               label: const Text('添加订阅源'),
@@ -390,6 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: () => _onFeedSelected(feed),
           onDelete: () => _deleteFeed(feed),
           onTogglePin: () => _togglePinFeed(feed),
+          onEdit: () => _editFeedName(feed),
         );
       },
     );
@@ -397,10 +441,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 宽屏分栏布局（macOS/Windows/Web）
   Widget _buildWideScreenLayout() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    // 左侧面板宽度：根据屏幕宽度动态调整
-    final leftPanelWidth = screenWidth > 1400 ? 320 : (screenWidth > 1200 ? 280 : 260);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -425,15 +465,13 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Row(
         children: [
-          // 左侧：订阅源列表
+          // 左侧：订阅源列表（可调整宽度）
           SizedBox(
-            width: leftPanelWidth.toDouble(),
+            width: _sidebarWidth,
             child: _buildFeedListPanel(),
           ),
-          Container(
-            width: 1,
-            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-          ),
+          // 可拖动的分割线
+          _buildResizableDivider(),
           // 右侧：文章列表或文章内容
           Expanded(
             child: _selectedArticle != null
@@ -460,10 +498,45 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showDialog(
           context: context,
-          builder: (ctx) => AddFeedDialog(onAdd: _addFeed),
+          builder: (ctx) => AddFeedDialog(
+            onAdd: _addFeed,
+            existingUrls: _feeds.map((f) => f.url).toList(),
+          ),
         ),
         icon: const Icon(Icons.add),
         label: const Text('Add Feed'),
+      ),
+    );
+  }
+
+  Widget _buildResizableDivider() {
+    final theme = Theme.of(context);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        onHorizontalDragUpdate: (details) {
+          setState(() {
+            _sidebarWidth = (_sidebarWidth + details.delta.dx)
+                .clamp(_minSidebarWidth, _maxSidebarWidth);
+          });
+        },
+        child: Container(
+          width: 4,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.outline.withValues(alpha: 0.3),
+          ),
+          child: Center(
+            child: Container(
+              width: 2,
+              height: 40,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -568,7 +641,10 @@ class _HomeScreenState extends State<HomeScreen> {
             FilledButton.icon(
               onPressed: () => showDialog(
                 context: context,
-                builder: (ctx) => AddFeedDialog(onAdd: _addFeed),
+                builder: (ctx) => AddFeedDialog(
+                  onAdd: _addFeed,
+                  existingUrls: _feeds.map((f) => f.url).toList(),
+                ),
               ),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('添加订阅源'),
@@ -637,6 +713,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => _onFeedSelected(feed),
                 onDelete: () => _deleteFeed(feed),
                 onTogglePin: () => _togglePinFeed(feed),
+                onEdit: () => _editFeedName(feed),
               );
             },
           ),

@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/backup_service.dart';
+import 'features_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final StorageService storageService;
@@ -232,6 +233,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // 关于 Section
             _buildSectionHeader(theme, 'About'),
             _buildSectionCard(theme, [
+              _buildSettingItem(
+                theme,
+                icon: Icons.auto_awesome,
+                iconColor: const Color(0xFFFFA726),
+                title: '功能介绍',
+                subtitle: '了解 RSS Reader 的主要功能',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const FeaturesScreen(),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 60),
               _buildSettingItem(
                 theme,
                 icon: Icons.info_outline,

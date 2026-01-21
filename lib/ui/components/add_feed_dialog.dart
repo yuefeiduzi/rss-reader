@@ -1,37 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../services/rss_service.dart';
 
 class AddFeedDialog extends StatefulWidget {
-  final Function(String url) onAdd;
+  final Function(String url, String? customName) onAdd;
+  final List<String> existingUrls;
 
-  const AddFeedDialog({super.key, required this.onAdd});
+  const AddFeedDialog({
+    super.key,
+    required this.onAdd,
+    this.existingUrls = const [],
+  });
 
   @override
   State<AddFeedDialog> createState() => _AddFeedDialogState();
 }
 
 class _AddFeedDialogState extends State<AddFeedDialog> {
-  final _controller = TextEditingController();
+  final _urlController = TextEditingController();
+  final _nameController = TextEditingController();
   bool _isLoading = false;
   String? _error;
+  String? _fetchedTitle;
 
-  // 预设的热门 RSS 源
-  static const List<Map<String, String>> _presetFeeds = [
-    {'title': 'Hacker News', 'url': 'https://news.ycombinator.com/rss'},
-    {'title': 'Dribbble', 'url': 'https://dribbble.com/feed'},
-    {'title': 'The Verge', 'url': 'https://www.theverge.com/rss/index.xml'},
-    {'title': 'TechCrunch', 'url': 'https://techcrunch.com/feed/'},
-    {'title': 'GitHub Blog', 'url': 'https://github.blog/feed/'},
-  ];
+  bool get _isDuplicate {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return false;
+    final normalizedUrl = url.toLowerCase();
+    return widget.existingUrls.any(
+      (existing) => existing.toLowerCase() == normalizedUrl,
+    );
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _urlController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   Future<void> _validateAndAdd() async {
-    final url = _controller.text.trim();
+    final url = _urlController.text.trim();
     if (url.isEmpty) {
       setState(() => _error = '请输入订阅源地址');
       return;
@@ -46,10 +55,16 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
       }
       // 自动补全 http:// 前缀
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        _controller.text = 'https://$url';
+        _urlController.text = 'https://$url';
       }
     } catch (e) {
       setState(() => _error = 'URL 格式无效');
+      return;
+    }
+
+    // 检查是否已存在
+    if (_isDuplicate) {
+      setState(() => _error = '该订阅源已添加');
       return;
     }
 
@@ -59,9 +74,21 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
     });
 
     try {
-      // 重新获取补全后的 URL
-      final finalUrl = _controller.text.trim();
-      await widget.onAdd(finalUrl);
+      // 先获取 feed 信息以获取标题
+      final rssService = RssService();
+      final feed = await rssService.fetchFeed(_urlController.text.trim());
+
+      // 设置默认名称为 feed 标题
+      if (_nameController.text.isEmpty) {
+        _nameController.text = feed.title;
+      }
+
+      final finalUrl = _urlController.text.trim();
+      final customName = _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
+          : null;
+
+      await widget.onAdd(finalUrl, customName);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       setState(() => _error = '添加订阅源失败: ${e.toString()}');
@@ -70,20 +97,39 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
     }
   }
 
-  void _selectPreset(String url) {
-    _controller.text = url;
-    _validateAndAdd();
+  Future<void> _previewFeed() async {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final rssService = RssService();
+      final feed = await rssService.fetchFeed(url);
+      setState(() {
+        _fetchedTitle = feed.title;
+        _nameController.text = feed.title;
+        _error = null;
+      });
+    } catch (e) {
+      setState(() {
+        _error = '无法获取订阅源信息';
+        _fetchedTitle = null;
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _pasteFromClipboard() async {
     try {
       final clipboardData = await Clipboard.getData('text/plain');
       if (clipboardData != null && clipboardData.text != null) {
-        _controller.text = clipboardData.text!;
+        _urlController.text = clipboardData.text!;
         setState(() => _error = null);
+        // 自动预览
+        await _previewFeed();
       }
     } catch (e) {
-      // 剪贴板访问失败，尝试使用快捷键提示
       debugPrint('Clipboard access failed: $e');
     }
   }
@@ -114,9 +160,31 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 名称输入框（可留空，默认使用源标题）
+            TextField(
+              controller: _nameController,
+              decoration: InputDecoration(
+                labelText: '自定义名称（可选）',
+                hintText: _fetchedTitle ?? '留空则使用订阅源标题',
+                prefixIcon: const Icon(Icons.edit),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  ),
+                ),
+              ),
+              enabled: !_isLoading,
+              onSubmitted: (_) => _validateAndAdd(),
+            ),
+            const SizedBox(height: 16),
             // URL 输入框
             TextField(
-              controller: _controller,
+              controller: _urlController,
               decoration: InputDecoration(
                 labelText: '订阅源地址',
                 hintText: 'https://example.com/feed.xml',
@@ -124,11 +192,13 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (_controller.text.isNotEmpty)
+                    if (_urlController.text.isNotEmpty)
                       IconButton(
                         icon: const Icon(Icons.clear),
                         onPressed: () {
-                          _controller.clear();
+                          _urlController.clear();
+                          _nameController.clear();
+                          _fetchedTitle = null;
                           setState(() => _error = null);
                         },
                       ),
@@ -136,6 +206,11 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
                       icon: const Icon(Icons.paste),
                       tooltip: '从剪贴板粘贴',
                       onPressed: _isLoading ? null : _pasteFromClipboard,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search),
+                      tooltip: '预览订阅源',
+                      onPressed: _isLoading ? null : _previewFeed,
                     ),
                   ],
                 ),
@@ -162,6 +237,12 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
               onSubmitted: (_) => _validateAndAdd(),
               onChanged: (_) {
                 if (_error != null) setState(() => _error = null);
+                // URL 变化时清除已获取的标题
+                if (_fetchedTitle != null) {
+                  setState(() {
+                    _fetchedTitle = null;
+                  });
+                }
               },
             ),
             // 错误提示
@@ -193,37 +274,6 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
                       ),
                     ],
                   ),
-                ),
-              ),
-            // 预设 RSS 源
-            if (_error == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '快速添加',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _presetFeeds.map((feed) {
-                        return ActionChip(
-                          avatar: const Icon(Icons.add, size: 16),
-                          label: Text(feed['title']!),
-                          onPressed: _isLoading
-                              ? null
-                              : () => _selectPreset(feed['url']!),
-                        );
-                      }).toList(),
-                    ),
-                  ],
                 ),
               ),
           ],

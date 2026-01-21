@@ -9,13 +9,15 @@
 - 预设热门订阅源（Hacker News、Dribbble、The Verge 等）
 - 订阅源置顶功能
 - 未读文章计数显示
+- **交互优化**：支持点击更多按钮、长按、右键菜单操作（跨平台一致）
 
 ### 文章阅读
 - 卡片式布局展示
 - 未读/已读状态标记
 - 收藏功能
-- 下拉刷新 + 缓存刷新
+- 下拉刷新 + 强制刷新
 - 图片懒加载
+- 文章按发布时间倒序排列
 
 ### 文章详情
 - 全文 HTML 渲染
@@ -74,7 +76,7 @@ lib/
 │   ├── feed.dart                  # 订阅源数据模型
 │   └── config.dart                # 配置数据模型
 ├── services/
-│   ├── rss_service.dart           # RSS/Atom 解析服务
+│   ├── rss_service.dart           # RSS/Atom 解析服务（支持 pubDate、dc:date）
 │   ├── storage_service.dart       # 本地存储服务
 │   ├── cache_service.dart         # 缓存管理服务
 │   ├── theme_service.dart         # 主题管理服务
@@ -87,7 +89,8 @@ lib/
     │   └── settings_screen.dart   # 设置页
     └── components/
         ├── add_feed_dialog.dart   # 添加订阅源对话框
-        ├── feed_list_tile.dart    # 订阅源列表项
+        ├── edit_feed_dialog.dart  # 重命名订阅源对话框
+        ├── feed_list_tile.dart    # 订阅源列表项（支持滑动/长按/右键/菜单按钮）
         └── responsive_layout.dart # 响应式布局组件
 ```
 

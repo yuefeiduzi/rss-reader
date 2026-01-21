@@ -174,6 +174,11 @@ class StorageService {
     await _saveToPrefs();
   }
 
+  Future<void> clearArticlesByFeed(String feedId) async {
+    _articles.removeWhere((a) => a.feedId == feedId);
+    await _saveToPrefs();
+  }
+
   // ============ Config 操作 ============
 
   Future<AppConfig> getConfig() async {

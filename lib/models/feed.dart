@@ -1,6 +1,7 @@
 class Feed {
   final String id;
   final String title;
+  final String? customName; // 用户自定义名称
   final String url;
   final String? description;
   final String? imageUrl;
@@ -9,9 +10,13 @@ class Feed {
   final DateTime addedAt;
   final bool isPinned;
 
+  // 显示名称：优先使用自定义名称
+  String get displayTitle => customName?.isNotEmpty == true ? customName! : title;
+
   Feed({
     required this.id,
     required this.title,
+    this.customName,
     required this.url,
     this.description,
     this.imageUrl,
@@ -25,6 +30,7 @@ class Feed {
     return Feed(
       id: json['id'] ?? '',
       title: json['title'] ?? '',
+      customName: json['customName'],
       url: json['url'] ?? '',
       description: json['description'],
       imageUrl: json['imageUrl'],
@@ -39,6 +45,7 @@ class Feed {
     return {
       'id': id,
       'title': title,
+      'customName': customName,
       'url': url,
       'description': description,
       'imageUrl': imageUrl,
@@ -52,6 +59,7 @@ class Feed {
   Feed copyWith({
     String? id,
     String? title,
+    String? customName,
     String? url,
     String? description,
     String? imageUrl,
@@ -63,6 +71,7 @@ class Feed {
     return Feed(
       id: id ?? this.id,
       title: title ?? this.title,
+      customName: customName ?? this.customName,
       url: url ?? this.url,
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,

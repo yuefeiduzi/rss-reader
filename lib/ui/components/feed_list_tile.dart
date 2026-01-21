@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/feed.dart';
 
 class FeedListTile extends StatefulWidget {
@@ -7,6 +8,7 @@ class FeedListTile extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final VoidCallback? onTogglePin;
+  final VoidCallback? onEdit;
 
   const FeedListTile({
     super.key,
@@ -15,6 +17,7 @@ class FeedListTile extends StatefulWidget {
     required this.onTap,
     required this.onDelete,
     this.onTogglePin,
+    this.onEdit,
   });
 
   @override
@@ -24,9 +27,10 @@ class FeedListTile extends StatefulWidget {
 class _FeedListTileState extends State<FeedListTile>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  late Animation<double> _slideAnimation;
   late Animation<double> _scaleAnimation;
   double _dragExtent = 0;
-  bool _showDeleteConfirm = false;
+  bool _showActions = false;
 
   @override
   void initState() {
@@ -34,6 +38,9 @@ class _FeedListTileState extends State<FeedListTile>
     _controller = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
+    );
+    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOut),
@@ -46,63 +53,17 @@ class _FeedListTileState extends State<FeedListTile>
     super.dispose();
   }
 
-  void _showActions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .outline
-                      .withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: Icon(
-                  widget.feed.isPinned
-                      ? Icons.push_pin
-                      : Icons.push_pin_outlined,
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-                title: Text(widget.feed.isPinned ? '取消置顶' : '置顶'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  widget.onTogglePin?.call();
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.delete, color: Colors.red[400]),
-                title: Text('删除', style: TextStyle(color: Colors.red[400])),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _confirmDelete();
-                },
-              ),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
+  void _resetPosition() {
+    _controller.reverse().whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _showActions = false;
+        });
+      }
+    });
   }
 
-  void _confirmDelete() {
+  void _showDeleteConfirm() {
     showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -121,22 +82,117 @@ class _FeedListTileState extends State<FeedListTile>
             child: const Text('删除'),
           ),
         ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     ).then((confirm) {
       if (confirm == true) {
         widget.onDelete();
       }
+      _resetPosition();
     });
   }
 
-  void _resetPosition() {
-    _controller.reverse().whenComplete(() {
-      if (mounted) {
-        setState(() {
-          _showDeleteConfirm = false;
-        });
+  void _showContextMenu([Offset? position]) {
+    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final Offset offset = position ?? renderBox.localToGlobal(Offset.zero);
+    final Size size = renderBox.size;
+
+    showMenu<int>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + size.height / 2,
+        offset.dx + size.width,
+        offset.dy + size.height / 2,
+      ),
+      items: [
+        PopupMenuItem<int>(
+          value: 0,
+          child: Row(
+            children: [
+              Icon(
+                widget.feed.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                size: 20,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+              const SizedBox(width: 12),
+              Text(widget.feed.isPinned ? '取消置顶' : '置顶'),
+            ],
+          ),
+        ),
+        PopupMenuItem<int>(
+          value: 1,
+          child: Row(
+            children: [
+              const Icon(Icons.edit_outlined, size: 20),
+              const SizedBox(width: 12),
+              const Text('重命名'),
+            ],
+          ),
+        ),
+        PopupMenuItem<int>(
+          value: 3,
+          child: Row(
+            children: [
+              const Icon(Icons.link, size: 20),
+              const SizedBox(width: 12),
+              const Text('复制链接'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<int>(
+          value: 2,
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: Colors.red[400],
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '删除',
+                style: TextStyle(color: Colors.red[400]),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      switch (value) {
+        case 0:
+          widget.onTogglePin?.call();
+          break;
+        case 1:
+          widget.onEdit?.call();
+          break;
+        case 2:
+          _showDeleteConfirm();
+          break;
+        case 3:
+          _copyLink();
+          break;
       }
     });
+  }
+
+  Future<void> _copyLink() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.feed.url));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('已复制链接到剪贴板'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to copy link: $e');
+    }
   }
 
   @override
@@ -144,75 +200,75 @@ class _FeedListTileState extends State<FeedListTile>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // 计算主内容偏移量
-    final maxDrag = 80.0;
-    final effectiveOffset = _dragExtent.clamp(-maxDrag, maxDrag);
-    final contentOffset = effectiveOffset;
+    const maxDrag = 80.0;
+    final effectiveOffset = _dragExtent.clamp(0.0, maxDrag);
 
     return Stack(
       children: [
-        // 背景按钮层
+        // 背景操作按钮区域
         Positioned.fill(
-          child: Row(
-            children: [
-              // 右滑 - 置顶按钮
-              Expanded(
-                child: GestureDetector(
-                  onTap: _showDeleteConfirm ? null : _handlePin,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          theme.colorScheme.secondary.withValues(alpha: 0.9),
-                          theme.colorScheme.secondary.withValues(alpha: 0.7),
-                        ],
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final progress = _slideAnimation.value;
+              return Row(
+                children: [
+                  const SizedBox(width: 60),
+                  Expanded(
+                    child: Transform.translate(
+                      offset: Offset(60 * (1 - progress), 0),
+                      child: Opacity(
+                        opacity: progress,
+                        child: Row(
+                          children: [
+                            _buildActionButton(
+                              theme: theme,
+                              icon: Icons.edit_outlined,
+                              label: '重命名',
+                              gradientColors: [
+                                theme.colorScheme.tertiary.withValues(alpha: 0.7),
+                                theme.colorScheme.tertiary.withValues(alpha: 0.9),
+                              ],
+                              onTap: () {
+                                widget.onEdit?.call();
+                                _resetPosition();
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            _buildActionButton(
+                              theme: theme,
+                              icon: widget.feed.isPinned
+                                  ? Icons.push_pin
+                                  : Icons.push_pin_outlined,
+                              label: widget.feed.isPinned ? '取消置顶' : '置顶',
+                              gradientColors: [
+                                theme.colorScheme.secondary.withValues(alpha: 0.7),
+                                theme.colorScheme.secondary.withValues(alpha: 0.9),
+                              ],
+                              onTap: () {
+                                widget.onTogglePin?.call();
+                                _resetPosition();
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            _buildActionButton(
+                              theme: theme,
+                              icon: Icons.delete_outline,
+                              label: '删除',
+                              gradientColors: [
+                                Colors.red[400]!.withValues(alpha: 0.7),
+                                Colors.red[400]!.withValues(alpha: 0.9),
+                              ],
+                              onTap: _showDeleteConfirm,
+                            ),
+                          ],
+                        ),
                       ),
-                      borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(16),
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      widget.feed.isPinned
-                          ? Icons.push_pin
-                          : Icons.push_pin_outlined,
-                      color: Colors.white,
-                      size: 24,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              // 左滑 - 删除按钮
-              Expanded(
-                child: GestureDetector(
-                  onTap: _showDeleteConfirm ? _confirmDelete : null,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          Colors.red[400]!.withValues(alpha: 0.7),
-                          Colors.red[400]!.withValues(alpha: 0.9),
-                        ],
-                      ),
-                      borderRadius: const BorderRadius.horizontal(
-                        right: Radius.circular(16),
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.delete_outline,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ),
         // 主内容层
@@ -221,26 +277,19 @@ class _FeedListTileState extends State<FeedListTile>
             setState(() {
               _dragExtent += details.delta.dx;
               if (_dragExtent > maxDrag) _dragExtent = maxDrag;
-              if (_dragExtent < -maxDrag) _dragExtent = -maxDrag;
+              if (_dragExtent < 0) _dragExtent = 0;
             });
           },
           onHorizontalDragEnd: (details) {
             if (_dragExtent > maxDrag * 0.5) {
-              // 右滑超过阈值，置顶
-              _controller.forward().whenComplete(() {
-                _handlePin();
-              });
-            } else if (_dragExtent < -maxDrag * 0.5) {
-              // 左滑超过阈值，显示删除按钮
               _controller.forward().whenComplete(() {
                 if (mounted) {
                   setState(() {
-                    _showDeleteConfirm = true;
+                    _showActions = true;
                   });
                 }
               });
             } else {
-              // 没有超过阈值，复位
               _resetPosition();
             }
             setState(() {
@@ -250,19 +299,20 @@ class _FeedListTileState extends State<FeedListTile>
           onTapDown: (_) => _controller.forward(),
           onTapUp: (_) => _controller.reverse(),
           onTapCancel: () => _controller.reverse(),
-          onLongPress: () => _showActions(context),
           onTap: () {
-            if (_showDeleteConfirm) {
+            if (_showActions) {
               _resetPosition();
             } else {
               widget.onTap();
             }
           },
+          onLongPress: () => _showContextMenu(),
+          onSecondaryTap: () => _showContextMenu(),
           child: AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
               return Transform.translate(
-                offset: Offset(contentOffset, 0),
+                offset: Offset(effectiveOffset, 0),
                 child: Transform.scale(
                   scale: _scaleAnimation.value,
                   child: child,
@@ -286,6 +336,7 @@ class _FeedListTileState extends State<FeedListTile>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     _buildAvatar(theme, isDark),
                     const SizedBox(width: 12),
@@ -298,7 +349,7 @@ class _FeedListTileState extends State<FeedListTile>
                             children: [
                               Expanded(
                                 child: Text(
-                                  widget.feed.title,
+                                  widget.feed.displayTitle,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -313,11 +364,21 @@ class _FeedListTileState extends State<FeedListTile>
                               ),
                               if (widget.feed.isPinned)
                                 Padding(
-                                  padding: const EdgeInsets.only(left: 6),
+                                  padding: const EdgeInsets.only(left: 4),
                                   child: Icon(
                                     Icons.push_pin,
-                                    size: 14,
+                                    size: 12,
                                     color: theme.colorScheme.secondary,
+                                  ),
+                                ),
+                              if (widget.feed.customName != null &&
+                                  widget.feed.customName!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: Icon(
+                                    Icons.edit,
+                                    size: 12,
+                                    color: theme.colorScheme.outline,
                                   ),
                                 ),
                             ],
@@ -336,8 +397,87 @@ class _FeedListTileState extends State<FeedListTile>
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
                     if (widget.unreadCount > 0) _buildUnreadBadge(theme),
+                    // 更多按钮
+                    PopupMenuButton<int>(
+                      icon: Icon(
+                        Icons.more_vert,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      padding: EdgeInsets.zero,
+                      onSelected: (value) {
+                        switch (value) {
+                          case 0:
+                            widget.onTogglePin?.call();
+                            break;
+                          case 1:
+                            widget.onEdit?.call();
+                            break;
+                          case 2:
+                            _showDeleteConfirm();
+                            break;
+                          case 3:
+                            _copyLink();
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem<int>(
+                          value: 0,
+                          child: Row(
+                            children: [
+                              Icon(
+                                widget.feed.isPinned
+                                    ? Icons.push_pin
+                                    : Icons.push_pin_outlined,
+                                size: 20,
+                                color: theme.colorScheme.secondary,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(widget.feed.isPinned ? '取消置顶' : '置顶'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem<int>(
+                          value: 1,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.edit_outlined, size: 20),
+                              const SizedBox(width: 12),
+                              const Text('重命名'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem<int>(
+                          value: 3,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.link, size: 20),
+                              const SizedBox(width: 12),
+                              const Text('复制链接'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem<int>(
+                          value: 2,
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: Colors.red[400],
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                '删除',
+                                style: TextStyle(color: Colors.red[400]),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -348,9 +488,42 @@ class _FeedListTileState extends State<FeedListTile>
     );
   }
 
-  void _handlePin() {
-    widget.onTogglePin?.call();
-    _resetPosition();
+  Widget _buildActionButton({
+    required ThemeData theme,
+    required IconData icon,
+    required String label,
+    required List<Color> gradientColors,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: gradientColors,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 22),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildAvatar(ThemeData theme, bool isDark) {
@@ -392,7 +565,7 @@ class _FeedListTileState extends State<FeedListTile>
           widget.feed.title.isNotEmpty
               ? widget.feed.title[0].toUpperCase()
               : '?',
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -426,7 +599,7 @@ class _FeedListTileState extends State<FeedListTile>
       ),
       child: Text(
         widget.unreadCount > 99 ? '99+' : widget.unreadCount.toString(),
-        style: TextStyle(
+        style: const TextStyle(
           color: Colors.white,
           fontSize: 11,
           fontWeight: FontWeight.w600,
