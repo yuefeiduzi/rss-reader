@@ -169,8 +169,23 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.feed.title,
-            maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.feed.displayTitle,
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (widget.feed.description != null && widget.feed.description!.isNotEmpty)
+              Text(
+                widget.feed.description!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+              ),
+          ],
+        ),
         actions: [
           // 刷新按钮
           IconButton(

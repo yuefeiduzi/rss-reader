@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
@@ -16,6 +18,9 @@ class BackupService {
     final feeds = await _storage.getAllFeeds();
     final articles = await _storage.getAllArticles(limit: 10000);
     final config = await _storage.getConfig();
+
+    debugPrint('[导出] 订阅源数量: ${feeds.length}');
+    debugPrint('[导出] 文章数量: ${articles.length}');
 
     return {
       'version': '1.0',
@@ -73,51 +78,117 @@ class BackupService {
     return buffer.toString();
   }
 
-  /// 备份到文件
-  Future<String> backupToFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final backupDir = Directory('${dir.path}/backup');
-    if (!await backupDir.exists()) {
-      await backupDir.create(recursive: true);
-    }
+  /// 备份到 zip 文件，可选指定目录
+  Future<String> backupToFile({String? outputDirectory}) async {
+    final dir = outputDirectory != null
+        ? Directory(outputDirectory)
+        : await getApplicationDocumentsDirectory();
 
     final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final jsonPath = '${backupDir.path}/backup_$timestamp.json';
-    final opmlPath = '${backupDir.path}/subscriptions_$timestamp.opml';
+    final zipPath = '${dir.path}/backup_$timestamp.zip';
 
-    // 保存 JSON 备份
+    // 生成 JSON 和 OPML 数据
     final jsonData = await exportToJson();
-    final jsonFile = File(jsonPath);
-    await jsonFile.writeAsString(jsonEncode(jsonData));
-
-    // 保存 OPML
     final opmlData = await exportToOpml();
-    final opmlFile = File(opmlPath);
-    await opmlFile.writeAsString(opmlData);
 
-    return jsonPath;
+    // 创建 zip 文件
+    final archive = Archive();
+    archive.addFile(ArchiveFile(
+      'backup.json',
+      utf8.encode(jsonEncode(jsonData)).length,
+      utf8.encode(jsonEncode(jsonData)),
+    ));
+    archive.addFile(ArchiveFile(
+      'subscriptions.opml',
+      utf8.encode(opmlData).length,
+      utf8.encode(opmlData),
+    ));
+
+    // 写入 zip 文件
+    final zipFile = File(zipPath);
+    await zipFile.writeAsBytes(ZipEncoder().encode(archive)!);
+
+    return zipPath;
   }
 
-  /// 从 JSON 文件恢复
-  Future<void> restoreFromJson(String path) async {
+  /// 从备份文件恢复（支持 JSON 和 zip），返回新导入的订阅源数量
+  Future<int> restoreFromJson(String path) async {
     final file = File(path);
     if (!await file.exists()) {
       throw Exception('Backup file not found');
     }
 
-    final jsonStr = await file.readAsString();
-    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    Map<String, dynamic> data;
+
+    // 如果是 zip 文件，解压后读取
+    if (path.endsWith('.zip')) {
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final jsonFile = archive.findFile('backup.json');
+      if (jsonFile == null) {
+        throw Exception('Invalid backup file: backup.json not found');
+      }
+      final jsonStr = utf8.decode(jsonFile.content);
+      data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    } else {
+      // JSON 文件直接读取
+      final jsonStr = await file.readAsString();
+      data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    }
 
     final feeds = (data['feeds'] as List).map((f) => Feed.fromJson(f)).toList();
     final articles = (data['articles'] as List).map((a) => Article.fromJson(a)).toList();
     final config = AppConfig.fromJson(data['config']);
 
-    // 恢复数据
+    // 恢复数据（带去重）
+    int feedCount = 0;
     for (var feed in feeds) {
-      await _storage.addFeed(feed);
+      await _storage.addFeedWithDuplicateCheck(feed);
+      feedCount++;
     }
     await _storage.addArticles(articles);
     await _storage.updateConfig(config);
+
+    return feedCount;
+  }
+
+  /// 从 zip 文件中的 OPML 导入订阅源（用于去重导入）
+  Future<int> importOpmlFromZip(String zipPath) async {
+    final file = File(zipPath);
+    final bytes = await file.readAsBytes();
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final opmlFile = archive.findFile('subscriptions.opml');
+    if (opmlFile == null) return 0;
+
+    final content = utf8.decode(opmlFile.content);
+    int count = 0;
+
+    // 简单解析 OPML
+    final regex = RegExp(r'xmlUrl="([^"]+)"\s+text="([^"]+)"');
+    final matches = regex.allMatches(content);
+
+    for (var match in matches) {
+      final url = match.group(1)!;
+      final title = match.group(2)!;
+
+      // 检查是否已存在
+      final feeds = await _storage.getAllFeeds();
+      if (!feeds.any((f) => f.url == url)) {
+        final feed = Feed(
+          id: Uri.parse(url).host + '_${DateTime.now().millisecondsSinceEpoch}',
+          title: title,
+          url: url,
+          description: null,
+          lastUpdated: DateTime.now(),
+          group: null,
+          addedAt: DateTime.now(),
+        );
+        await _storage.addFeed(feed);
+        count++;
+      }
+    }
+
+    return count;
   }
 
   /// 从 OPML 文件导入订阅源

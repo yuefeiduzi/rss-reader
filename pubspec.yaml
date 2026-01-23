@@ -40,6 +40,9 @@ dependencies:
   # 文件选择
   file_picker: ^8.0.0
 
+  # 压缩
+  archive: ^3.6.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -86,9 +86,9 @@ class _FeedListTileState extends State<FeedListTile>
       ),
     ).then((confirm) {
       if (confirm == true) {
+        // 直接执行删除，dialog 会自动关闭
         widget.onDelete();
       }
-      _resetPosition();
     });
   }
 
@@ -181,6 +181,8 @@ class _FeedListTileState extends State<FeedListTile>
 
   Future<void> _copyLink() async {
     try {
+      // macOS 需要短暂延迟
+      await Future.delayed(const Duration(milliseconds: 50));
       await Clipboard.setData(ClipboardData(text: widget.feed.url));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -192,6 +194,21 @@ class _FeedListTileState extends State<FeedListTile>
       }
     } catch (e) {
       debugPrint('Failed to copy link: $e');
+      // 重试一次
+      try {
+        await Future.delayed(const Duration(milliseconds: 100));
+        await Clipboard.setData(ClipboardData(text: widget.feed.url));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已复制链接到剪贴板'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (retryError) {
+        debugPrint('Copy link retry failed: $retryError');
+      }
     }
   }
 

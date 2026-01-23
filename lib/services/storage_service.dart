@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
@@ -21,12 +22,15 @@ class StorageService {
   }
 
   Future<void> _loadFromPrefs() async {
+    debugPrint('[加载] 开始加载 prefs');
     // 加载 feeds
     final feedsJson = _prefs?.getStringList(_feedsKey) ?? [];
+    debugPrint('[加载] feedsJson 数量: ${feedsJson.length}');
     _feeds = feedsJson.map((f) => Feed.fromJson(jsonDecode(f))).toList();
 
     // 加载 articles
     final articlesJson = _prefs?.getStringList(_articlesKey) ?? [];
+    debugPrint('[加载] articlesJson 数量: ${articlesJson.length}');
     _articles = articlesJson.map((a) => Article.fromJson(jsonDecode(a))).toList();
 
     // 加载 config
@@ -34,23 +38,28 @@ class StorageService {
     if (configJson != null) {
       _config = AppConfig.fromJson(jsonDecode(configJson));
     }
+    debugPrint('[加载] 完成，feeds: ${_feeds.length}, articles: ${_articles.length}');
   }
 
   Future<void> _saveToPrefs() async {
+    debugPrint('[保存] 开始保存，feeds 数量: ${_feeds.length}');
     // 保存 feeds
     await _prefs?.setStringList(
       _feedsKey,
       _feeds.map((f) => jsonEncode(f.toJson())).toList(),
     );
+    debugPrint('[保存] feeds 已保存');
 
     // 保存 articles
     await _prefs?.setStringList(
       _articlesKey,
       _articles.map((a) => jsonEncode(a.toJson())).toList(),
     );
+    debugPrint('[保存] articles 已保存');
 
     // 保存 config
     await _prefs?.setString(_configKey, jsonEncode(_config.toJson()));
+    debugPrint('[保存] config 已保存');
   }
 
   // ============ Feed 操作 ============
@@ -72,6 +81,19 @@ class StorageService {
     await _saveToPrefs();
   }
 
+  /// 添加订阅源（带去重检查，根据 url 判断是否已存在）
+  Future<bool> addFeedWithDuplicateCheck(Feed feed) async {
+    final exists = _feeds.any((f) => f.url == feed.url);
+    if (exists) {
+      debugPrint('[导入] 订阅源已存在，跳过: ${feed.url}');
+      return false;
+    }
+    _feeds.add(feed);
+    debugPrint('[导入] 添加新订阅源: ${feed.title}');
+    await _saveToPrefs();
+    return true;
+  }
+
   Future<void> updateFeed(Feed feed) async {
     final index = _feeds.indexWhere((f) => f.id == feed.id);
     if (index >= 0) {
@@ -83,6 +105,7 @@ class StorageService {
   Future<void> deleteFeed(String id) async {
     _feeds.removeWhere((f) => f.id == id);
     _articles.removeWhere((a) => a.feedId == id);
+    debugPrint('[删除] 删除后订阅源数量: ${_feeds.length}');
     await _saveToPrefs();
   }
 

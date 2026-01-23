@@ -122,6 +122,8 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
 
   Future<void> _pasteFromClipboard() async {
     try {
+      // macOS 需要短暂延迟来获取剪贴板内容
+      await Future.delayed(const Duration(milliseconds: 100));
       final clipboardData = await Clipboard.getData('text/plain');
       if (clipboardData != null && clipboardData.text != null) {
         _urlController.text = clipboardData.text!;
@@ -131,6 +133,18 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
       }
     } catch (e) {
       debugPrint('Clipboard access failed: $e');
+      // 重试一次
+      try {
+        await Future.delayed(const Duration(milliseconds: 200));
+        final retryData = await Clipboard.getData('text/plain');
+        if (retryData != null && retryData.text != null) {
+          _urlController.text = retryData.text!;
+          setState(() => _error = null);
+          await _previewFeed();
+        }
+      } catch (retryError) {
+        debugPrint('Clipboard retry failed: $retryError');
+      }
     }
   }
 

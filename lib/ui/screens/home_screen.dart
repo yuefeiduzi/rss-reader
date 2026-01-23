@@ -126,36 +126,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _deleteFeed(Feed feed) async {
     debugPrint('[动作] 删除订阅源: ${feed.title}');
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除订阅源'),
-        content: Text('确定要删除 "${feed.title}" 吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red[400],
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      await widget.storageService.deleteFeed(feed.id);
-      await _loadFeeds();
-      debugPrint('[成功] 删除订阅源成功: ${feed.title}');
-      if (_selectedFeed?.id == feed.id) {
-        setState(() {
-          _selectedFeed = null;
-          _selectedArticle = null;
-        });
-      }
+    await widget.storageService.deleteFeed(feed.id);
+    await _loadFeeds();
+    debugPrint('[成功] 删除订阅源成功: ${feed.title}');
+    if (_selectedFeed?.id == feed.id) {
+      setState(() {
+        _selectedFeed = null;
+        _selectedArticle = null;
+      });
     }
   }
 
@@ -212,8 +190,8 @@ class _HomeScreenState extends State<HomeScreen> {
     debugPrint('[动作] 刷新未读计数完成');
   }
 
-  void _navigateToSettings() {
-    Navigator.push(
+  void _navigateToSettings() async {
+    final shouldRefresh = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (context) => SettingsScreen(
@@ -222,6 +200,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+    if (shouldRefresh == true && mounted) {
+      await _loadFeeds();
+    }
   }
 
   Widget _buildThemeIcon() {
@@ -236,6 +217,18 @@ class _HomeScreenState extends State<HomeScreen> {
       icon = Icons.brightness_6;
     }
     return Icon(icon);
+  }
+
+  /// AppBar 底部分隔线
+  PreferredSize _buildAppBarDivider() {
+    return PreferredSize(
+      preferredSize: const Size(double.infinity, 1),
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+      ),
+    );
   }
 
   @override
@@ -275,6 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _navigateToSettings,
           ),
         ],
+        bottom: _buildAppBarDivider(),
       ),
       body: _buildMobileBody(),
       floatingActionButton: FloatingActionButton.extended(
@@ -462,6 +456,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _navigateToSettings,
           ),
         ],
+        bottom: _buildAppBarDivider(),
       ),
       body: Row(
         children: [

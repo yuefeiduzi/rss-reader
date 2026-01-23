@@ -20,10 +20,14 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final BackupService _backupService;
+  late final BackupService _backupService;
   bool _isLoading = false;
 
-  _SettingsScreenState() : _backupService = BackupService(StorageService());
+  @override
+  void initState() {
+    super.initState();
+    _backupService = BackupService(widget.storageService);
+  }
 
   void _showBackupResult(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -36,31 +40,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _performBackup() async {
+    debugPrint('[备份] 开始备份');
+    // 让用户选择保存位置
+    final result = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '选择备份保存位置',
+    );
+
+    if (result == null) {
+      debugPrint('[备份] 用户取消');
+      return;
+    }
+
+    debugPrint('[备份] 已选择目录: $result');
+
     setState(() => _isLoading = true);
     try {
-      final path = await _backupService.backupToFile();
+      debugPrint('[备份] 开始调用 backupToFile');
+      final path = await _backupService.backupToFile(outputDirectory: result);
+      debugPrint('[备份] 完成: $path');
       _showBackupResult('Backup saved to: $path');
     } catch (e) {
+      debugPrint('[备份] 失败: $e');
       _showBackupResult('Backup failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _performRestore() async {
+  Future<bool> _performImport() async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        allowedExtensions: ['json'],
+        allowedExtensions: ['zip', 'json', 'opml', 'xml'],
         type: FileType.custom,
       );
 
       if (result != null && result.files.single.path != null) {
         setState(() => _isLoading = true);
-        await _backupService.restoreFromJson(result.files.single.path!);
-        _showBackupResult('Restore successful! Please restart the app.');
+        final path = result.files.single.path!;
+        int feedCount = 0;
+
+        if (path.endsWith('.zip')) {
+          // Zip 文件：恢复完整备份（包含订阅源和文章，带去重）
+          feedCount = await _backupService.restoreFromJson(path);
+          _showBackupResult('Restore successful! 导入 $feedCount 个新订阅源');
+        } else if (path.endsWith('.json')) {
+          // JSON 文件：恢复完整备份
+          feedCount = await _backupService.restoreFromJson(path);
+          _showBackupResult('Restore successful! Please restart the app.');
+        } else if (path.endsWith('.opml') || path.endsWith('.xml')) {
+          // OPML/XML 文件：只导入订阅源
+          feedCount = await _backupService.importFromOpml(path);
+          _showBackupResult('导入成功: $feedCount 个订阅源');
+        }
+
+        if (mounted) {
+          if (feedCount > 0) {
+            _imported = true;
+          }
+          setState(() => _isLoading = false);
+        }
+        return feedCount > 0;
       }
+      return false;
     } catch (e) {
-      _showBackupResult('Restore failed: $e');
+      _showBackupResult('Import failed: $e');
+      return false;
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -168,21 +212,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  bool _imported = false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.3,
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.of(context).pop(_imported);
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Settings',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.3,
+            ),
           ),
+          centerTitle: false,
         ),
-        centerTitle: false,
-      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,11 +272,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(height: 1, indent: 60),
               _buildSettingItem(
                 theme,
-                icon: Icons.restore,
-                iconColor: const Color(0xFF7A6B8B),
-                title: 'Restore',
-                subtitle: 'Import from backup file',
-                onTap: _performRestore,
+                icon: Icons.file_upload,
+                iconColor: const Color(0xFF5C6BC0),
+                title: 'Import',
+                subtitle: 'Import from zip, json, or opml file',
+                onTap: _isLoading ? null : _performImport,
+                isLoading: _isLoading,
               ),
             ]),
             const SizedBox(height: 24),
@@ -262,6 +314,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
