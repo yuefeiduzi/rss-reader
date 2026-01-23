@@ -31,7 +31,10 @@ This project follows a **MVVM-like** architecture with clear separation:
 ```
 lib/
 ├── main.dart              # App entry point, theme setup
-├── models/                # Data models (Article, Feed, Config)
+├── models/                # Data models
+│   ├── article.dart       # Article data model
+│   ├── feed.dart          # Feed data model
+│   └── config.dart        # Config data model
 ├── services/              # Business logic services
 │   ├── rss_service.dart       # RSS/Atom parsing (pubDate, dc:date support)
 │   ├── storage_service.dart   # Local storage (SharedPreferences)
@@ -40,6 +43,11 @@ lib/
 │   └── backup_service.dart    # Backup/restore
 └── ui/                    # Presentation layer
     ├── screens/           # Page components
+    │   ├── home_screen.dart           # Home screen
+    │   ├── article_list_screen.dart   # Article list
+    │   ├── article_detail_screen.dart # Article detail
+    │   ├── settings_screen.dart       # Settings
+    │   └── features_screen.dart       # Features
     └── components/        # Reusable widgets
         ├── add_feed_dialog.dart   # Add feed dialog
         ├── edit_feed_dialog.dart  # Edit feed name dialog
@@ -94,3 +102,7 @@ lib/
 ### RSS Parsing
 - Supports both `pubDate` and `dc:date` formats
 - Articles sorted by pubDate in descending order
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file
