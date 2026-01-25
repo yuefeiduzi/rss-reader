@@ -122,23 +122,23 @@ class _FeedListTileState extends State<FeedListTile>
             ],
           ),
         ),
-        PopupMenuItem<int>(
+        const PopupMenuItem<int>(
           value: 1,
           child: Row(
             children: [
-              const Icon(Icons.edit_outlined, size: 20),
-              const SizedBox(width: 12),
-              const Text('重命名'),
+              Icon(Icons.edit_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('重命名'),
             ],
           ),
         ),
-        PopupMenuItem<int>(
+        const PopupMenuItem<int>(
           value: 3,
           child: Row(
             children: [
-              const Icon(Icons.link, size: 20),
-              const SizedBox(width: 12),
-              const Text('复制链接'),
+              Icon(Icons.link, size: 20),
+              SizedBox(width: 12),
+              Text('复制链接'),
             ],
           ),
         ),
@@ -243,8 +243,10 @@ class _FeedListTileState extends State<FeedListTile>
                               icon: Icons.edit_outlined,
                               label: '重命名',
                               gradientColors: [
-                                theme.colorScheme.tertiary.withValues(alpha: 0.7),
-                                theme.colorScheme.tertiary.withValues(alpha: 0.9),
+                                theme.colorScheme.tertiary
+                                    .withValues(alpha: 0.7),
+                                theme.colorScheme.tertiary
+                                    .withValues(alpha: 0.9),
                               ],
                               onTap: () {
                                 widget.onEdit?.call();
@@ -259,8 +261,10 @@ class _FeedListTileState extends State<FeedListTile>
                                   : Icons.push_pin_outlined,
                               label: widget.feed.isPinned ? '取消置顶' : '置顶',
                               gradientColors: [
-                                theme.colorScheme.secondary.withValues(alpha: 0.7),
-                                theme.colorScheme.secondary.withValues(alpha: 0.9),
+                                theme.colorScheme.secondary
+                                    .withValues(alpha: 0.7),
+                                theme.colorScheme.secondary
+                                    .withValues(alpha: 0.9),
                               ],
                               onTap: () {
                                 widget.onTogglePin?.call();
@@ -455,23 +459,23 @@ class _FeedListTileState extends State<FeedListTile>
                             ],
                           ),
                         ),
-                        PopupMenuItem<int>(
+                        const PopupMenuItem<int>(
                           value: 1,
                           child: Row(
                             children: [
-                              const Icon(Icons.edit_outlined, size: 20),
-                              const SizedBox(width: 12),
-                              const Text('重命名'),
+                              Icon(Icons.edit_outlined, size: 20),
+                              SizedBox(width: 12),
+                              Text('重命名'),
                             ],
                           ),
                         ),
-                        PopupMenuItem<int>(
+                        const PopupMenuItem<int>(
                           value: 3,
                           child: Row(
                             children: [
-                              const Icon(Icons.link, size: 20),
-                              const SizedBox(width: 12),
-                              const Text('复制链接'),
+                              Icon(Icons.link, size: 20),
+                              SizedBox(width: 12),
+                              Text('复制链接'),
                             ],
                           ),
                         ),

@@ -128,7 +128,7 @@ class ThemeService extends ChangeNotifier {
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
@@ -145,7 +145,7 @@ class ThemeService extends ChangeNotifier {
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
@@ -159,7 +159,7 @@ class ThemeService extends ChangeNotifier {
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
             letterSpacing: -0.1,
@@ -212,8 +212,8 @@ class ThemeService extends ChangeNotifier {
         thickness: 1,
       ),
       // 图标主题
-      iconTheme: IconThemeData(
-        color: const Color(0xFF5C5C5C),
+      iconTheme: const IconThemeData(
+        color: Color(0xFF5C5C5C),
         size: 22,
       ),
       // 列表磁贴样式
@@ -294,7 +294,7 @@ class ThemeService extends ChangeNotifier {
       ),
       navigationBarTheme: NavigationBarThemeData(
         elevation: 0,
-        backgroundColor: Color(0xFF1E1E1E).withValues(alpha: 0.95),
+        backgroundColor: const Color(0xFF1E1E1E).withValues(alpha: 0.95),
         surfaceTintColor: Colors.transparent,
         indicatorColor: const Color(0xFF3D3D3D),
         labelTextStyle: MaterialStateTextStyle.resolveWith((states) {
@@ -326,7 +326,7 @@ class ThemeService extends ChangeNotifier {
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
@@ -342,7 +342,7 @@ class ThemeService extends ChangeNotifier {
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
@@ -355,7 +355,7 @@ class ThemeService extends ChangeNotifier {
             borderRadius: BorderRadius.circular(12),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
             letterSpacing: -0.1,

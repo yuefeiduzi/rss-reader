@@ -175,7 +175,8 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
           children: [
             Text(widget.feed.displayTitle,
                 maxLines: 1, overflow: TextOverflow.ellipsis),
-            if (widget.feed.description != null && widget.feed.description!.isNotEmpty)
+            if (widget.feed.description != null &&
+                widget.feed.description!.isNotEmpty)
               Text(
                 widget.feed.description!,
                 maxLines: 1,
@@ -243,7 +244,7 @@ class _ArticleListScreenState extends State<ArticleListScreen> {
                     ),
                     // 刷新时的顶部进度指示
                     if (_isRefreshing)
-                      Positioned(
+                      const Positioned(
                         top: 0,
                         left: 0,
                         right: 0,
@@ -308,7 +309,7 @@ class _ArticleCardState extends State<ArticleCard>
         .replaceAll(RegExp(r'&quot;'), '"')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    return text.length > 120 ? text.substring(0, 120) + '...' : text;
+    return text.length > 120 ? '${text.substring(0, 120)}...' : text;
   }
 
   String _formatRelativeDate(DateTime date) {
@@ -437,7 +438,8 @@ class _ArticleCardState extends State<ArticleCard>
                               gradient: LinearGradient(
                                 colors: [
                                   theme.colorScheme.secondary,
-                                  theme.colorScheme.secondary.withValues(alpha: 0.7),
+                                  theme.colorScheme.secondary
+                                      .withValues(alpha: 0.7),
                                 ],
                               ),
                               shape: BoxShape.circle,
@@ -453,7 +455,8 @@ class _ArticleCardState extends State<ArticleCard>
                               gradient: LinearGradient(
                                 colors: [
                                   theme.colorScheme.secondary,
-                                  theme.colorScheme.secondary.withValues(alpha: 0.8),
+                                  theme.colorScheme.secondary
+                                      .withValues(alpha: 0.8),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(6),
@@ -566,7 +569,8 @@ class _ArticleCardState extends State<ArticleCard>
                                 ),
                               ),
                               Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 8),
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 8),
                                 width: 3,
                                 height: 3,
                                 decoration: BoxDecoration(

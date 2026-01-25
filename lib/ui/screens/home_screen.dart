@@ -91,7 +91,8 @@ class _HomeScreenState extends State<HomeScreen> {
           SnackBar(
             content: Text('Failed to add feed: $e'),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -118,7 +119,8 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(
           content: Text('已更新名称为 "$newName"'),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
@@ -145,9 +147,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(feed.isPinned ? '已取消置顶 "${feed.title}"' : '已置顶 "${feed.title}"'),
+          content: Text(
+              feed.isPinned ? '已取消置顶 "${feed.title}"' : '已置顶 "${feed.title}"'),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
@@ -372,7 +376,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.rss_feed,
                 size: 48,
                 color: Colors.white,
@@ -674,7 +678,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [

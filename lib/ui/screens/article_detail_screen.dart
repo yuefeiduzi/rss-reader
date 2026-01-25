@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
@@ -67,7 +69,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         final rssService = RssService();
         _fullContent = await rssService.fetchFullContent(widget.article.link);
         // 缓存文章内容
-        await widget.cacheService.cacheArticleContent(widget.article.id, _fullContent);
+        await widget.cacheService
+            .cacheArticleContent(widget.article.id, _fullContent);
         debugPrint('[成功] 全文抓取完成, 内容长度: ${_fullContent.length}');
       } catch (e) {
         debugPrint('[错误] 全文抓取失败: $e');
@@ -95,7 +98,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       setState(() {
         _fullContent = newContent;
       });
-      await widget.cacheService.cacheArticleContent(widget.article.id, newContent);
+      await widget.cacheService
+          .cacheArticleContent(widget.article.id, newContent);
       debugPrint('[成功] 强制刷新成功, 内容长度: ${newContent.length}');
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -382,9 +386,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
           ),
           IconButton(
             icon: Icon(
-              _isFavorite
-                  ? Icons.favorite
-                  : Icons.favorite_border,
+              _isFavorite ? Icons.favorite : Icons.favorite_border,
             ),
             onPressed: _toggleFavorite,
           ),
@@ -439,9 +441,12 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                         const SizedBox(width: 4),
                         Text(
                           _formatDateTime(widget.article.pubDate),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
                         Container(
                           margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -460,7 +465,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                         const SizedBox(width: 4),
                         Text(
                           _formatDateTime(widget.article.cachedAt),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
                                 color: Theme.of(context).colorScheme.outline,
                               ),
                         ),
@@ -583,12 +591,14 @@ class _HtmlContent extends StatelessWidget {
       case 'strong':
       case 'b':
         final text = _extractText(node);
-        return SelectableText(text, style: const TextStyle(fontWeight: FontWeight.bold));
+        return SelectableText(text,
+            style: const TextStyle(fontWeight: FontWeight.bold));
 
       case 'em':
       case 'i':
         final text = _extractText(node);
-        return SelectableText(text, style: const TextStyle(fontStyle: FontStyle.italic));
+        return SelectableText(text,
+            style: const TextStyle(fontStyle: FontStyle.italic));
 
       case 'blockquote':
         return Padding(
@@ -608,7 +618,10 @@ class _HtmlContent extends StatelessWidget {
           padding: const EdgeInsets.only(top: 16, bottom: 8),
           child: SelectableText(
             text,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context)
+                .textTheme
+                .headlineSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
         );
 
@@ -618,7 +631,10 @@ class _HtmlContent extends StatelessWidget {
           padding: const EdgeInsets.only(top: 14, bottom: 6),
           child: SelectableText(
             text,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
         );
 
@@ -628,7 +644,10 @@ class _HtmlContent extends StatelessWidget {
           padding: const EdgeInsets.only(top: 12, bottom: 6),
           child: SelectableText(
             text,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
         );
 
@@ -785,7 +804,8 @@ class _CopyableImageState extends State<_CopyableImage> {
             if (progress == null) return child;
             return const Center(child: CircularProgressIndicator());
           },
-          errorBuilder: (context, error, stack) => const Icon(Icons.broken_image),
+          errorBuilder: (context, error, stack) =>
+              const Icon(Icons.broken_image),
         ),
       ),
     );

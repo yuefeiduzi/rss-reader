@@ -32,7 +32,8 @@ class BackupService {
   }
 
   /// 导出订阅源为 OPML（用于其他阅读器兼容）
-  Future<String> exportToOpml({String title = 'RSS Reader Subscriptions'}) async {
+  Future<String> exportToOpml(
+      {String title = 'RSS Reader Subscriptions'}) async {
     final feeds = await _storage.getAllFeeds();
     final buffer = StringBuffer();
 
@@ -52,7 +53,8 @@ class BackupService {
 
     for (var entry in groups.entries) {
       if (entry.key != 'Ungrouped') {
-        buffer.write('    <outline text="${_escapeXml(entry.key)}" title="${_escapeXml(entry.key)}">\n');
+        buffer.write(
+            '    <outline text="${_escapeXml(entry.key)}" title="${_escapeXml(entry.key)}">\n');
       }
 
       for (var feed in entry.value) {
@@ -137,7 +139,8 @@ class BackupService {
     }
 
     final feeds = (data['feeds'] as List).map((f) => Feed.fromJson(f)).toList();
-    final articles = (data['articles'] as List).map((a) => Article.fromJson(a)).toList();
+    final articles =
+        (data['articles'] as List).map((a) => Article.fromJson(a)).toList();
     final config = AppConfig.fromJson(data['config']);
 
     // 恢复数据（带去重）
@@ -175,7 +178,7 @@ class BackupService {
       final feeds = await _storage.getAllFeeds();
       if (!feeds.any((f) => f.url == url)) {
         final feed = Feed(
-          id: Uri.parse(url).host + '_${DateTime.now().millisecondsSinceEpoch}',
+          id: '${Uri.parse(url).host}_${DateTime.now().millisecondsSinceEpoch}',
           title: title,
           url: url,
           description: null,
@@ -213,7 +216,7 @@ class BackupService {
       final feeds = await _storage.getAllFeeds();
       if (!feeds.any((f) => f.url == url)) {
         final feed = Feed(
-          id: Uri.parse(url).host + '_${DateTime.now().millisecondsSinceEpoch}',
+          id: '${Uri.parse(url).host}_${DateTime.now().millisecondsSinceEpoch}',
           title: title,
           url: url,
           description: null,
@@ -235,7 +238,8 @@ class BackupService {
     final backupDir = Directory('${dir.path}/backup');
     if (!await backupDir.exists()) return [];
 
-    return backupDir.listSync()
+    return backupDir
+        .listSync()
         .whereType<File>()
         .where((f) => f.path.endsWith('.json'))
         .toList()
