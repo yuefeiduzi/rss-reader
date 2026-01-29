@@ -93,6 +93,8 @@ class _FeedListTileState extends State<FeedListTile>
   }
 
   void _showContextMenu([Offset? position]) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
@@ -107,76 +109,132 @@ class _FeedListTileState extends State<FeedListTile>
         offset.dx + size.width,
         offset.dy + size.height / 2,
       ),
-      items: [
-        PopupMenuItem<int>(
-          value: 0,
-          child: Row(
-            children: [
-              Icon(
-                widget.feed.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                size: 20,
-                color: Theme.of(context).colorScheme.secondary,
+      items: _buildMenuItems(),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 0,
+      color: isDark
+          ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95)
+          : theme.colorScheme.surface,
+    ).then(_handleMenuSelection);
+  }
+
+  List<PopupMenuEntry<int>> _buildMenuItems() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return [
+      _buildMenuItem(
+        value: 0,
+        icon: widget.feed.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+        iconColor: theme.colorScheme.primary,
+        label: widget.feed.isPinned ? '取消置顶' : '置顶',
+        theme: theme,
+        isDark: isDark,
+      ),
+      _buildMenuItem(
+        value: 1,
+        icon: Icons.edit_outlined,
+        iconColor: theme.colorScheme.onSurfaceVariant,
+        label: '重命名',
+        theme: theme,
+        isDark: isDark,
+      ),
+      _buildMenuItem(
+        value: 3,
+        icon: Icons.link,
+        iconColor: theme.colorScheme.onSurfaceVariant,
+        label: '复制链接',
+        theme: theme,
+        isDark: isDark,
+      ),
+      const PopupMenuDivider(height: 1, indent: 16, endIndent: 16),
+      _buildMenuItem(
+        value: 2,
+        icon: Icons.delete_outline,
+        iconColor: theme.colorScheme.error,
+        label: '删除',
+        isDestructive: true,
+        theme: theme,
+        isDark: isDark,
+      ),
+    ];
+  }
+
+  PopupMenuItem<int> _buildMenuItem({
+    required int value,
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required ThemeData theme,
+    required bool isDark,
+    bool isDestructive = false,
+  }) {
+    return PopupMenuItem<int>(
+      value: value,
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: isDestructive
+              ? theme.colorScheme.errorContainer.withValues(alpha: isDark ? 0.15 : 0.1)
+              : Colors.transparent,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: isDestructive
+                    ? theme.colorScheme.error.withValues(alpha: isDark ? 0.2 : 0.1)
+                    : iconColor.withValues(alpha: isDark ? 0.15 : 0.08),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 12),
-              Text(widget.feed.isPinned ? '取消置顶' : '置顶'),
-            ],
-          ),
-        ),
-        const PopupMenuItem<int>(
-          value: 1,
-          child: Row(
-            children: [
-              Icon(Icons.edit_outlined, size: 20),
-              SizedBox(width: 12),
-              Text('重命名'),
-            ],
-          ),
-        ),
-        const PopupMenuItem<int>(
-          value: 3,
-          child: Row(
-            children: [
-              Icon(Icons.link, size: 20),
-              SizedBox(width: 12),
-              Text('复制链接'),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem<int>(
-          value: 2,
-          child: Row(
-            children: [
-              Icon(
-                Icons.delete_outline,
-                size: 20,
-                color: Colors.red[400],
+              child: Icon(
+                icon,
+                size: 18,
+                color: isDestructive
+                    ? theme.colorScheme.error
+                    : iconColor,
               ),
-              const SizedBox(width: 12),
-              Text(
-                '删除',
-                style: TextStyle(color: Colors.red[400]),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isDestructive ? FontWeight.w500 : FontWeight.w400,
+                  color: isDestructive
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.onSurface,
+                  letterSpacing: -0.1,
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
-    ).then((value) {
-      switch (value) {
-        case 0:
-          widget.onTogglePin?.call();
-          break;
-        case 1:
-          widget.onEdit?.call();
-          break;
-        case 2:
-          _showDeleteConfirm();
-          break;
-        case 3:
-          _copyLink();
-          break;
-      }
-    });
+      ),
+    );
+  }
+
+  void _handleMenuSelection(int? value) {
+    switch (value) {
+      case 0:
+        widget.onTogglePin?.call();
+        break;
+      case 1:
+        widget.onEdit?.call();
+        break;
+      case 2:
+        _showDeleteConfirm();
+        break;
+      case 3:
+        _copyLink();
+        break;
+    }
   }
 
   Future<void> _copyLink() async {
@@ -220,7 +278,18 @@ class _FeedListTileState extends State<FeedListTile>
     const maxDrag = 80.0;
     final effectiveOffset = _dragExtent.clamp(0.0, maxDrag);
 
-    return Stack(
+    // 统一的菜单样式
+    final menuTheme = PopupMenuTheme.of(context).copyWith(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 0,
+      color: isDark
+          ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95)
+          : theme.colorScheme.surface,
+    );
+
+    return PopupMenuTheme(
+      data: menuTheme,
+      child: Stack(
       children: [
         // 背景操作按钮区域
         Positioned.fill(
@@ -419,85 +488,15 @@ class _FeedListTileState extends State<FeedListTile>
                       ),
                     ),
                     if (widget.unreadCount > 0) _buildUnreadBadge(theme),
-                    // 更多按钮
+                    // 菜单按钮
                     PopupMenuButton<int>(
                       icon: Icon(
                         Icons.more_vert,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                       padding: EdgeInsets.zero,
-                      onSelected: (value) {
-                        switch (value) {
-                          case 0:
-                            widget.onTogglePin?.call();
-                            break;
-                          case 1:
-                            widget.onEdit?.call();
-                            break;
-                          case 2:
-                            _showDeleteConfirm();
-                            break;
-                          case 3:
-                            _copyLink();
-                            break;
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        PopupMenuItem<int>(
-                          value: 0,
-                          child: Row(
-                            children: [
-                              Icon(
-                                widget.feed.isPinned
-                                    ? Icons.push_pin
-                                    : Icons.push_pin_outlined,
-                                size: 20,
-                                color: theme.colorScheme.secondary,
-                              ),
-                              const SizedBox(width: 12),
-                              Text(widget.feed.isPinned ? '取消置顶' : '置顶'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem<int>(
-                          value: 1,
-                          child: Row(
-                            children: [
-                              Icon(Icons.edit_outlined, size: 20),
-                              SizedBox(width: 12),
-                              Text('重命名'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem<int>(
-                          value: 3,
-                          child: Row(
-                            children: [
-                              Icon(Icons.link, size: 20),
-                              SizedBox(width: 12),
-                              Text('复制链接'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem<int>(
-                          value: 2,
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.delete_outline,
-                                size: 20,
-                                color: Colors.red[400],
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                '删除',
-                                style: TextStyle(color: Colors.red[400]),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      onSelected: _handleMenuSelection,
+                      itemBuilder: (context) => _buildMenuItems(),
                     ),
                   ],
                 ),
@@ -506,6 +505,7 @@ class _FeedListTileState extends State<FeedListTile>
           ),
         ),
       ],
+      ),
     );
   }
 
