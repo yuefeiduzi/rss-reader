@@ -1,5 +1,32 @@
+buildscript {
+    // # 修改这里，从 1.9.24 改为 2.1.0
+    ext.kotlin_version = '2.1.0'  
+    
+    // 必须要有 repositories 配置！
+    repositories {
+        // 阿里云镜像优先
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        
+        // 原始仓库作为备用
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // # 修改这里，从 8.7.0 改为 8.9.1
+        classpath 'com.android.tools.build:gradle:8.9.1'  
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
 allprojects {
     repositories {
+        // 使用阿里云镜像
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
         google()
         mavenCentral()
     }
