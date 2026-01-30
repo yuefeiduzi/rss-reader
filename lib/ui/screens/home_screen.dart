@@ -275,17 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: _buildAppBarDivider(),
       ),
       body: _buildMobileBody(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showDialog(
-          context: context,
-          builder: (ctx) => AddFeedDialog(
-            onAdd: _addFeed,
-            existingUrls: _feeds.map((f) => f.url).toList(),
-          ),
-        ),
-        icon: const Icon(Icons.add),
-        label: const Text('添加订阅源'),
-      ),
+      floatingActionButton: null, // 按钮已移到订阅源列表左下角
     );
   }
 
@@ -420,20 +410,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFeedList() {
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 8, bottom: 88),
-      itemCount: _feeds.length,
-      itemBuilder: (context, index) {
-        final feed = _feeds[index];
-        return FeedListTile(
-          feed: feed,
-          unreadCount: _unreadCounts[feed.id] ?? 0,
-          onTap: () => _onFeedSelected(feed),
-          onDelete: () => _deleteFeed(feed),
-          onTogglePin: () => _togglePinFeed(feed),
-          onEdit: () => _editFeedName(feed),
-        );
-      },
+    return Stack(
+      children: [
+        ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 88),
+          itemCount: _feeds.length,
+          itemBuilder: (context, index) {
+            final feed = _feeds[index];
+            return FeedListTile(
+              feed: feed,
+              unreadCount: _unreadCounts[feed.id] ?? 0,
+              onTap: () => _onFeedSelected(feed),
+              onDelete: () => _deleteFeed(feed),
+              onTogglePin: () => _togglePinFeed(feed),
+              onEdit: () => _editFeedName(feed),
+            );
+          },
+        ),
+        // 添加订阅源按钮 - 左下角位置
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: FloatingActionButton.small(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (ctx) => AddFeedDialog(
+                onAdd: _addFeed,
+                existingUrls: _feeds.map((f) => f.url).toList(),
+              ),
+            ),
+            child: const Icon(Icons.add),
+            backgroundColor: Theme.of(context).colorScheme.secondary,
+            foregroundColor: Theme.of(context).colorScheme.onSecondary,
+          ),
+        ),
+      ],
     );
   }
 
@@ -494,17 +505,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showDialog(
-          context: context,
-          builder: (ctx) => AddFeedDialog(
-            onAdd: _addFeed,
-            existingUrls: _feeds.map((f) => f.url).toList(),
-          ),
-        ),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Feed'),
-      ),
+      // 按钮已移到订阅源列表左下角
+      floatingActionButton: null,
     );
   }
 
@@ -653,69 +655,90 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Column(
+    return Stack(
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              bottom: BorderSide(
-                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+        Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                border: Border(
+                  bottom: BorderSide(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    '订阅源',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          theme.colorScheme.secondary,
+                          theme.colorScheme.secondary.withValues(alpha: 0.8),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_feeds.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          child: Row(
-            children: [
-              Text(
-                '订阅源',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface,
-                  letterSpacing: -0.1,
-                ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.only(top: 8, bottom: 88),
+                itemCount: _feeds.length,
+                itemBuilder: (context, index) {
+                  final feed = _feeds[index];
+                  return FeedListTile(
+                    feed: feed,
+                    unreadCount: _unreadCounts[feed.id] ?? 0,
+                    onTap: () => _onFeedSelected(feed),
+                    onDelete: () => _deleteFeed(feed),
+                    onTogglePin: () => _togglePinFeed(feed),
+                    onEdit: () => _editFeedName(feed),
+                  );
+                },
               ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      theme.colorScheme.secondary,
-                      theme.colorScheme.secondary.withValues(alpha: 0.8),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${_feeds.length}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.only(top: 8, bottom: 88),
-            itemCount: _feeds.length,
-            itemBuilder: (context, index) {
-              final feed = _feeds[index];
-              return FeedListTile(
-                feed: feed,
-                unreadCount: _unreadCounts[feed.id] ?? 0,
-                onTap: () => _onFeedSelected(feed),
-                onDelete: () => _deleteFeed(feed),
-                onTogglePin: () => _togglePinFeed(feed),
-                onEdit: () => _editFeedName(feed),
-              );
-            },
+        // 添加订阅源按钮 - 左下角位置
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: FloatingActionButton.small(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (ctx) => AddFeedDialog(
+                onAdd: _addFeed,
+                existingUrls: _feeds.map((f) => f.url).toList(),
+              ),
+            ),
+            child: const Icon(Icons.add),
+            backgroundColor: Theme.of(context).colorScheme.secondary,
+            foregroundColor: Theme.of(context).colorScheme.onSecondary,
           ),
         ),
       ],
