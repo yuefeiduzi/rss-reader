@@ -1,146 +1,118 @@
-# rss_reader - 跨平台 RSS 阅读器
+# rss_reader
 
-一个功能完整的跨平台 RSS/Atom 阅读器应用，支持 iOS、Android、macOS、Windows、Linux 和 Web。
+Flutter 编写的跨平台 RSS/Atom 阅读器。数据全部保存在本地（SharedPreferences），无后端、无账号、无云同步。
 
-## 功能特性
+## 平台支持现状
 
-### 订阅源管理
-- 添加/删除 RSS/Atom 订阅源
-- 预设热门订阅源（Hacker News、Dribbble、The Verge 等）
-- 订阅源置顶功能
-- 未读文章计数显示
-- **交互优化**：支持点击更多按钮、长按、右键菜单操作（跨平台一致）
+代码包含 Android / iOS / macOS / Windows / Linux / Web 六个平台的工程目录，但**当前只有 Web 是真正可运行的**：
 
-### 文章阅读
-- 卡片式布局展示
-- 未读/已读状态标记
-- 收藏功能
-- 下拉刷新 + 强制刷新
-- 图片懒加载
-- 文章按发布时间倒序排列
+| 平台 | 状态 | 说明 |
+|---|---|---|
+| Web | ⚠️ 可运行，但功能受限 | **无法抓取真实订阅源**，见下方「已知限制」 |
+| macOS / iOS | ❌ 未验证 | 需要完整安装 Xcode |
+| Android | ❌ 未验证 | 需要 Android SDK |
+| Windows / Linux | ❌ 未验证 | 需在对应系统上构建 |
 
-### 文章详情
-- 全文 HTML 渲染
-- 图片预览（支持缩放）
-- 外部浏览器打开
-- 分享功能
+> 如果你要真正把这个 App 用起来，优先补 Xcode 跑 macOS 桌面端：Web 端受浏览器同源策略限制，抓不到 RSS。
 
-### 主题系统
-- 浅色/暗色/跟随系统三种模式
-- Material 3 设计语言
+## 已知限制
 
-### 响应式布局
-- 移动端：单页导航
-- 桌面端：分栏布局（左侧订阅源，右侧文章列表/详情）
+### Web 端抓不到订阅源（架构限制）
 
-### 数据管理
-- SharedPreferences 持久化存储
-- 30天过期文章自动清理
-- 7天缓存过期管理
+`RssService` 会设置自定义 `User-Agent`，使请求成为「非简单请求」，浏览器因此发起 CORS 预检；而真实世界的 RSS 服务器不会响应预检，请求被浏览器直接拦截。
 
-### 备份恢复
-- JSON 完整备份
-- OPML 订阅源导出（兼容其他阅读器）
-- 备份文件管理
+这不是可以靠改代码绕过的 bug，需要引入 CORS 代理层。本地起一个带 `Access-Control-Allow-Origin` 的测试服务器可以走通全流程，说明解析链路本身是好的。
 
-### 全文抓取
-- 智能内容提取
-- 广告过滤
-- HTML 实体解码
+### Web 端备份功能不可用
 
-## 技术栈
+`BackupService` 依赖 `dart:io` 与 `path_provider`，在 Web 上运行时抛 `UnsupportedError`。
 
-| 类别 | 技术 |
-|------|------|
-| 框架 | Flutter 3.10.0+ |
-| SDK | Dart 3.0.0 - 4.0.0 |
-| 状态管理 | Provider 6.0.5 |
+## 功能
 
-**主要依赖：**
-- `webfeed` - RSS/Atom 解析
-- `dio` - HTTP 请求
-- `html` - HTML 解析
-- `shared_preferences` - 本地存储
-- `cached_network_image` - 图片缓存
-- `flutter_html` - HTML 渲染
-- `url_launcher` - 外部链接
-- `share_plus` - 分享功能
+见 [FEATURES.md](FEATURES.md)（标注了每个功能的真实实现状态）。
+
+## 快速开始
+
+### 环境要求
+
+- Flutter **3.47.4**（Dart 3.13.3）
+- 中国大陆网络建议配置镜像（否则下载引擎产物只有 ~400KB/s）
+
+```bash
+export PATH="$HOME/development/flutter/bin:$PATH"
+export PUB_HOSTED_URL="https://pub.flutter-io.cn"
+export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
+```
+
+### 安装与运行
+
+```bash
+flutter pub get
+flutter run -d chrome          # 开发模式
+```
+
+### 构建
+
+```bash
+flutter build web --release    # 产物在 build/web/
+flutter build macos --release  # 需要 Xcode
+flutter build apk --release    # 需要 Android SDK
+```
+
+### 验证
+
+```bash
+flutter analyze                # 应为 0 error
+flutter test                   # 单元测试
+```
+
+本地跑 Web 版验证：
+
+```bash
+flutter build web --release
+cd build/web && python3 -m http.server 8099
+# 打开 http://127.0.0.1:8099/
+```
 
 ## 项目结构
 
 ```
 lib/
-├── main.dart                      # 应用入口
-├── models/
-│   ├── article.dart               # 文章数据模型
-│   ├── feed.dart                  # 订阅源数据模型
-│   └── config.dart                # 配置数据模型
-├── services/
-│   ├── rss_service.dart           # RSS/Atom 解析服务（支持 pubDate、dc:date）
-│   ├── storage_service.dart       # 本地存储服务
-│   ├── cache_service.dart         # 缓存管理服务
-│   ├── theme_service.dart         # 主题管理服务
-│   └── backup_service.dart        # 备份恢复服务
+├── main.dart                 # 入口：初始化服务并注入 HomeScreen
+├── models/                   # Article / Feed / AppConfig
+├── services/                 # rss / storage / cache / theme / backup
+├── utils/                    # 纯函数（有单测覆盖）
+│   ├── feed_url.dart         # URL 规范化
+│   ├── opml.dart             # OPML 解析与生成
+│   ├── date_format.dart      # 日期格式化（统一处理时区）
+│   └── html_content.dart     # 正文图片地址提取与补全
 └── ui/
-    ├── screens/
-    │   ├── home_screen.dart       # 首页
-    │   ├── article_list_screen.dart   # 文章列表页
-    │   ├── article_detail_screen.dart # 文章详情页
-    │   ├── settings_screen.dart   # 设置页
-    │   └── features_screen.dart   # 功能特性页
-    └── components/
-        ├── add_feed_dialog.dart   # 添加订阅源对话框
-        ├── edit_feed_dialog.dart  # 重命名订阅源对话框
-        ├── feed_list_tile.dart    # 订阅源列表项（支持滑动/长按/右键/菜单按钮）
-        └── responsive_layout.dart # 响应式布局组件
+    ├── screens/              # home / article_list / article_detail / settings / features
+    └── components/           # 对话框与列表项组件
 ```
 
-## 快速开始
+## 技术栈
 
-### 环境要求
-- Flutter 3.10.0+
-- Dart 3.0.0+
+| 类别 | 技术 |
+|---|---|
+| 框架 | Flutter 3.47.4 |
+| SDK | Dart 3.13.3 |
+| RSS 解析 | `webfeed_plus`（RSS 2.0 / Atom 1.0） |
+| HTTP | `dio` |
+| HTML 解析 | `html`（正文抓取）+ `flutter_html`（渲染） |
+| 本地存储 | `shared_preferences` |
 
-### 安装依赖
+> `pubspec.yaml` 里的 `dependency_overrides` 是**必需的**，用于绕开两处上游依赖断裂。改动前请先读 [AGENTS.md](AGENTS.md)。
 
-```bash
-flutter pub get
-```
+## 文档
 
-### 运行项目
-
-```bash
-flutter run
-```
-
-### 构建发布
-
-```bash
-# Android
-flutter build apk --release
-
-# iOS
-flutter build ios --release
-
-# macOS
-flutter build macos --release
-
-# Windows
-flutter build windows --release
-
-# Web
-flutter build web --release
-```
-
-## 配置
-
-### 代码规范
-
-项目使用以下 lint 规则：
-- `prefer_const_constructors`
-- `prefer_const_declarations`
-- `avoid_print`
+| 文件 | 内容 |
+|---|---|
+| [AGENTS.md](AGENTS.md) | 给 AI agent 的开发指南：环境、约定、陷阱 |
+| [FEATURES.md](FEATURES.md) | 功能清单与实现状态 |
+| [TODO.md](TODO.md) | 待办与路线图 |
+| [docs/known-issues.md](docs/known-issues.md) | 已核实的问题与技术债 |
 
 ## 许可证
 
-本项目采用 MIT 许可证，详见 [LICENSE](LICENSE) 文件。
+MIT，见 [LICENSE](LICENSE)。
