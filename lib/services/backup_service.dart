@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/config.dart';
+import '../utils/opml.dart';
 import 'storage_service.dart';
 
 class BackupService {
@@ -54,17 +55,17 @@ class BackupService {
     for (var entry in groups.entries) {
       if (entry.key != 'Ungrouped') {
         buffer.write(
-            '    <outline text="${_escapeXml(entry.key)}" title="${_escapeXml(entry.key)}">\n');
+            '    <outline text="${escapeXml(entry.key)}" title="${escapeXml(entry.key)}">\n');
       }
 
       for (var feed in entry.value) {
         buffer.write('      <outline ');
         buffer.write('type="rss" ');
-        buffer.write('text="${_escapeXml(feed.title)}" ');
-        buffer.write('title="${_escapeXml(feed.title)}" ');
-        buffer.write('xmlUrl="${_escapeXml(feed.url)}" ');
+        buffer.write('text="${escapeXml(feed.title)}" ');
+        buffer.write('title="${escapeXml(feed.title)}" ');
+        buffer.write('xmlUrl="${escapeXml(feed.url)}" ');
         if (feed.description != null) {
-          buffer.write('description="${_escapeXml(feed.description!)}" ');
+          buffer.write('description="${escapeXml(feed.description!)}" ');
         }
         buffer.write('/>\n');
       }
@@ -146,8 +147,8 @@ class BackupService {
     // 恢复数据（带去重）
     int feedCount = 0;
     for (var feed in feeds) {
-      await _storage.addFeedWithDuplicateCheck(feed);
-      feedCount++;
+      // addFeedWithDuplicateCheck 已按 url 去重，返回值才是真正新增的数量
+      if (await _storage.addFeedWithDuplicateCheck(feed)) feedCount++;
     }
     await _storage.addArticles(articles);
     await _storage.updateConfig(config);
@@ -158,40 +159,16 @@ class BackupService {
   /// 从 zip 文件中的 OPML 导入订阅源（用于去重导入）
   Future<int> importOpmlFromZip(String zipPath) async {
     final file = File(zipPath);
+    if (!await file.exists()) {
+      throw Exception('Backup file not found');
+    }
+
     final bytes = await file.readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes);
     final opmlFile = archive.findFile('subscriptions.opml');
     if (opmlFile == null) return 0;
 
-    final content = utf8.decode(opmlFile.content);
-    int count = 0;
-
-    // 简单解析 OPML
-    final regex = RegExp(r'xmlUrl="([^"]+)"\s+text="([^"]+)"');
-    final matches = regex.allMatches(content);
-
-    for (var match in matches) {
-      final url = match.group(1)!;
-      final title = match.group(2)!;
-
-      // 检查是否已存在
-      final feeds = await _storage.getAllFeeds();
-      if (!feeds.any((f) => f.url == url)) {
-        final feed = Feed(
-          id: '${Uri.parse(url).host}_${DateTime.now().millisecondsSinceEpoch}',
-          title: title,
-          url: url,
-          description: null,
-          lastUpdated: DateTime.now(),
-          group: null,
-          addedAt: DateTime.now(),
-        );
-        await _storage.addFeed(feed);
-        count++;
-      }
-    }
-
-    return count;
+    return _importSubscriptions(utf8.decode(opmlFile.content));
   }
 
   /// 从 OPML 文件导入订阅源
@@ -201,57 +178,46 @@ class BackupService {
       throw Exception('OPML file not found');
     }
 
-    final content = await file.readAsString();
-    int count = 0;
+    return _importSubscriptions(await file.readAsString());
+  }
 
-    // 简单解析 OPML
-    final regex = RegExp(r'xmlUrl="([^"]+)"\s+text="([^"]+)"');
-    final matches = regex.allMatches(content);
-
-    for (var match in matches) {
-      final url = match.group(1)!;
-      final title = match.group(2)!;
-
-      // 检查是否已存在
-      final feeds = await _storage.getAllFeeds();
-      if (!feeds.any((f) => f.url == url)) {
-        final feed = Feed(
-          id: '${Uri.parse(url).host}_${DateTime.now().millisecondsSinceEpoch}',
-          title: title,
-          url: url,
-          description: null,
-          lastUpdated: DateTime.now(),
-          group: null,
-          addedAt: DateTime.now(),
-        );
-        await _storage.addFeed(feed);
-        count++;
-      }
+  /// 解析 OPML 并导入，返回真正新增的订阅源数量。
+  Future<int> _importSubscriptions(String opmlContent) async {
+    var count = 0;
+    for (final subscription in parseOpmlSubscriptions(opmlContent)) {
+      final host = Uri.tryParse(subscription.url)?.host ?? subscription.url;
+      final feed = Feed(
+        // 用微秒而非毫秒：批量导入时同一毫秒内会生成重复 id
+        id: '${host}_${DateTime.now().microsecondsSinceEpoch}',
+        title: subscription.title,
+        url: subscription.url,
+        description: null,
+        lastUpdated: DateTime.now(),
+        group: null,
+        addedAt: DateTime.now(),
+      );
+      if (await _storage.addFeedWithDuplicateCheck(feed)) count++;
     }
-
     return count;
   }
 
-  /// 获取备份文件列表
-  Future<List<File>> getBackupFiles() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final backupDir = Directory('${dir.path}/backup');
-    if (!await backupDir.exists()) return [];
+  /// 获取备份文件列表。
+  ///
+  /// [backupToFile] 写的是 `<docs>/backup_<时间戳>.zip`，早期实现却扫描
+  /// `<docs>/backup/*.json`，因此永远返回空列表。
+  Future<List<File>> getBackupFiles({String? directory}) async {
+    final dir = directory != null
+        ? Directory(directory)
+        : await getApplicationDocumentsDirectory();
+    if (!await dir.exists()) return [];
 
-    return backupDir
+    return dir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.json'))
+        .where((f) =>
+            f.uri.pathSegments.last.startsWith('backup_') &&
+            (f.path.endsWith('.zip') || f.path.endsWith('.json')))
         .toList()
       ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-  }
-
-  String _escapeXml(String str) {
-    return str
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&apos;');
   }
 }

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+// Flutter 3.47 起 CupertinoPageTransitionsBuilder 不再由 material.dart 导出
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'storage_service.dart';
 
 class ThemeService extends ChangeNotifier {
@@ -15,7 +17,11 @@ class ThemeService extends ChangeNotifier {
   Future<void> init() async {
     final config = await _storage.getConfig();
     _followSystem = config.followSystemTheme;
-    _themeMode = config.isDarkMode ? ThemeMode.dark : ThemeMode.light;
+    // 跟随系统时必须用 ThemeMode.system：旧实现一律用 isDarkMode 算出
+    // light/dark，导致「跟随系统」在重启后失效（系统深色也显示浅色）。
+    _themeMode = _followSystem
+        ? ThemeMode.system
+        : (config.isDarkMode ? ThemeMode.dark : ThemeMode.light);
     notifyListeners();
   }
 
@@ -34,8 +40,17 @@ class ThemeService extends ChangeNotifier {
 
   /// 切换暗色模式
   Future<void> toggleDarkMode() async {
+    // 处于「跟随系统」时按系统实际亮度取反，否则系统已是深色时
+    // 点按钮会切到 dark 而看不出任何变化。
+    final isCurrentlyDark = switch (_themeMode) {
+      ThemeMode.dark => true,
+      ThemeMode.light => false,
+      ThemeMode.system =>
+        WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+            Brightness.dark,
+    };
     await setThemeMode(
-      _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+      isCurrentlyDark ? ThemeMode.light : ThemeMode.dark,
     );
   }
 

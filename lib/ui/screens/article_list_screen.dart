@@ -5,6 +5,7 @@ import '../../services/cache_service.dart';
 import '../../services/rss_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
+import '../../utils/date_format.dart';
 import 'article_detail_screen.dart';
 
 class ArticleListScreen extends StatefulWidget {
@@ -312,24 +313,10 @@ class _ArticleCardState extends State<ArticleCard>
     return text.length > 120 ? '${text.substring(0, 120)}...' : text;
   }
 
-  String _formatRelativeDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
+  // 统一走 utils/date_format.dart，避免和 article_detail_screen 各维护一份
+  String _formatRelativeDate(DateTime date) => formatRelativeDate(date);
 
-    if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}分钟前';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}小时前';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays}天前';
-    } else {
-      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    }
-  }
-
-  String _formatDateTime(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
+  String _formatDateTime(DateTime date) => formatDateTime(date);
 
   @override
   Widget build(BuildContext context) {

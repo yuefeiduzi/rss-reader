@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _deleteFeed(Feed feed) async {
+  Future<void> _deleteFeed(Feed feed) async {
     debugPrint('[动作] 删除订阅源: ${feed.title}');
     await widget.storageService.deleteFeed(feed.id);
     await _loadFeeds();
@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _togglePinFeed(Feed feed) async {
+  Future<void> _togglePinFeed(Feed feed) async {
     debugPrint('[动作] ${feed.isPinned ? '取消置顶' : '置顶'}: ${feed.title}');
     final updatedFeed = feed.copyWith(isPinned: !feed.isPinned);
     await widget.storageService.updateFeed(updatedFeed);

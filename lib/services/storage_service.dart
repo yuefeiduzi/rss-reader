@@ -65,7 +65,8 @@ class StorageService {
   // ============ Feed 操作 ============
 
   Future<List<Feed>> getAllFeeds() async {
-    return _feeds;
+    // 返回副本：调用方（如首页按置顶排序）不应改写内部列表顺序
+    return List<Feed>.of(_feeds);
   }
 
   Future<Feed?> getFeed(String id) async {
@@ -119,10 +120,11 @@ class StorageService {
   }
 
   Future<List<Article>> getAllArticles({int limit = 100}) async {
-    return _articles
-        .toList()
-      ..sort((a, b) => b.pubDate.compareTo(a.pubDate))
-      ..take(limit);
+    final sorted = _articles.toList()
+      ..sort((a, b) => b.pubDate.compareTo(a.pubDate));
+    // 注意：不能写成级联的 `..take(limit)`，级联返回的是接收者，
+    // take 的结果会被丢弃，导致 limit 完全失效。
+    return sorted.take(limit).toList();
   }
 
   Future<List<Article>> getUnreadArticles() async {

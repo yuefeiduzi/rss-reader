@@ -14,6 +14,8 @@ import '../../services/cache_service.dart';
 import '../../services/rss_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
+import '../../utils/date_format.dart';
+import '../../utils/html_content.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
   final Article article;
@@ -58,8 +60,11 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   Future<void> _loadContent() async {
     setState(() => _isLoading = true);
 
-    // 使用缓存的内容或摘要
-    _fullContent = widget.article.content ?? widget.article.summary ?? '';
+    // 优先级：已抓取的全文缓存 > 源正文 > 摘要
+    _fullContent = widget.cacheService.getArticleContent(widget.article.id) ??
+        widget.article.content ??
+        widget.article.summary ??
+        '';
 
     debugPrint('[加载缓存] 加载文章内容: ${widget.article.title}');
 
@@ -77,6 +82,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       }
     }
 
+    // 相对图片地址必须按文章链接补全：否则 flutter_html 会相对应用自身的
+    // 域名去取图，博客站常见的 /images/a.jpg 全部 404。
+    _fullContent = absolutizeImageUrls(_fullContent, widget.article.link);
+
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -90,7 +99,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     try {
       debugPrint('[动作] 强制刷新文章全文: ${widget.article.link}');
       final rssService = RssService();
-      final newContent = await rssService.fetchFullContent(widget.article.link);
+      final newContent = absolutizeImageUrls(
+        await rssService.fetchFullContent(widget.article.link),
+        widget.article.link,
+      );
 
       if (!mounted) return;
 
@@ -478,24 +490,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     );
   }
 
-  String _formatDateTime(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
-
-  /// 提取 HTML 中的所有图片 URL
-  List<String> _extractImageUrls(String html) {
-    final urls = <String>[];
-    // 匹配 img 标签的 src 属性
-    final regex = RegExp('<img[^>]+src=[\'"]([^\'"]+)[\'"]', caseSensitive: false);
-    final matches = regex.allMatches(html);
-    for (final match in matches) {
-      final url = match.group(1);
-      if (url != null && url.isNotEmpty && !urls.contains(url)) {
-        urls.add(url);
-      }
-    }
-    return urls;
-  }
+  // 统一走 utils/date_format.dart，避免和 article_list_screen 各维护一份
+  String _formatDateTime(DateTime date) => formatDateTime(date);
 
   /// 显示图片画廊
   void _showImageGallery(BuildContext context, List<String> images, int initialIndex) {
@@ -535,7 +531,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   /// 悬浮图片入口按钮 - 使用蓝色系
   Widget _buildImageGalleryButton(BuildContext context) {
-    final images = _extractImageUrls(_fullContent);
+    final images = extractImageUrls(_fullContent);
     if (images.isEmpty) return const SizedBox.shrink();
 
     return Container(
@@ -550,23 +546,9 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     );
   }
 
-  /// 从 HTML 内容中提取所有图片 URL
-  List<String> _extractImageUrlsFromContent(String html) {
-    final urls = <String>[];
-    final regex = RegExp('<img[^>]+src=[\']([^\'"]+)[\']', caseSensitive: false);
-    final matches = regex.allMatches(html);
-    for (final match in matches) {
-      final url = match.group(1);
-      if (url != null && url.isNotEmpty && !urls.contains(url)) {
-        urls.add(url);
-      }
-    }
-    return urls;
-  }
-
   /// 显示图片上下文菜单
   void _showImageContextMenu(BuildContext context) {
-    final images = _extractImageUrlsFromContent(_fullContent);
+    final images = extractImageUrls(_fullContent);
     if (images.isEmpty) return;
 
     final theme = Theme.of(context);

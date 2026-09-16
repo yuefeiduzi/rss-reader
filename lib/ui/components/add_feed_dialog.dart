@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/rss_service.dart';
+import '../../utils/feed_url.dart';
 
 class AddFeedDialog extends StatefulWidget {
   final Function(String url, String? customName) onAdd;
@@ -24,11 +25,10 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
   String? _fetchedTitle;
 
   bool get _isDuplicate {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) return false;
-    final normalizedUrl = url.toLowerCase();
+    final url = normalizeFeedUrl(_urlController.text);
+    if (url == null) return false;
     return widget.existingUrls.any(
-      (existing) => existing.toLowerCase() == normalizedUrl,
+      (existing) => normalizeFeedUrl(existing) == url,
     );
   }
 
@@ -40,27 +40,19 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
   }
 
   Future<void> _validateAndAdd() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) {
+    final input = _urlController.text.trim();
+    if (input.isEmpty) {
       setState(() => _error = '请输入订阅源地址');
       return;
     }
 
-    // 验证 URL 格式
-    try {
-      final uri = Uri.parse(url);
-      if (!uri.isAbsolute) {
-        setState(() => _error = '请输入有效的 URL 地址');
-        return;
-      }
-      // 自动补全 http:// 前缀
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        _urlController.text = 'https://$url';
-      }
-    } catch (e) {
-      setState(() => _error = 'URL 格式无效');
+    // 先补全/校验：裸域名（example.com/feed）也应当被接受
+    final url = normalizeFeedUrl(input);
+    if (url == null) {
+      setState(() => _error = '请输入有效的 http/https 地址');
       return;
     }
+    _urlController.text = url;
 
     // 检查是否已存在
     if (_isDuplicate) {
@@ -76,19 +68,18 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
     try {
       // 先获取 feed 信息以获取标题
       final rssService = RssService();
-      final feed = await rssService.fetchFeed(_urlController.text.trim());
+      final feed = await rssService.fetchFeed(url);
 
       // 设置默认名称为 feed 标题
       if (_nameController.text.isEmpty) {
         _nameController.text = feed.title;
       }
 
-      final finalUrl = _urlController.text.trim();
       final customName = _nameController.text.trim().isNotEmpty
           ? _nameController.text.trim()
           : null;
 
-      await widget.onAdd(finalUrl, customName);
+      await widget.onAdd(url, customName);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       setState(() => _error = '添加订阅源失败: ${e.toString()}');
@@ -98,8 +89,12 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
   }
 
   Future<void> _previewFeed() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) return;
+    final url = normalizeFeedUrl(_urlController.text);
+    if (url == null) {
+      setState(() => _error = '请输入有效的 http/https 地址');
+      return;
+    }
+    _urlController.text = url;
 
     setState(() => _isLoading = true);
     try {

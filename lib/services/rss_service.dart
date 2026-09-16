@@ -21,17 +21,29 @@ class RssService {
     ));
   }
 
-  /// 解析 RSS/Atom 订阅源
+  /// 抓取并解析 RSS/Atom 订阅源信息
   Future<Feed> fetchFeed(String url) async {
     final response = await _dio.get(url);
-    final decoder = utf8.decode(response.data);
-
-    if (decoder.contains('<feed') && decoder.contains('<entry')) {
-      return _parseAtomFeed(decoder, url);
-    } else {
-      return _parseRssFeed(decoder, url);
-    }
+    return parseFeed(_decodeBody(response.data), url);
   }
+
+  /// 从 XML 文本解析订阅源信息（纯函数，不触网，可单测）
+  Feed parseFeed(String xml, String url) {
+    return _isAtom(xml) ? _parseAtomFeed(xml, url) : _parseRssFeed(xml, url);
+  }
+
+  /// 把响应体解码成字符串。
+  ///
+  /// [_dio] 的 BaseOptions 设的是 [ResponseType.bytes]，所以 `response.data`
+  /// 是 `Uint8List` 而非 `String`，必须先解码。
+  String _decodeBody(dynamic data) {
+    if (data is String) return data;
+    if (data is List<int>) return utf8.decode(data, allowMalformed: true);
+    return data.toString();
+  }
+
+  bool _isAtom(String xml) =>
+      xml.contains('<feed') && xml.contains('<entry');
 
   Feed _parseAtomFeed(String xml, String url) {
     final atomFeed = AtomFeed.parse(xml);
@@ -62,17 +74,17 @@ class RssService {
   }
 
   /// 获取订阅源文章列表
-  Future<List<Article>> fetchArticles(Feed feed,
-      {bool forceFullContent = false}) async {
+  Future<List<Article>> fetchArticles(Feed feed) async {
     final response = await _dio.get(feed.url,
         options: Options(responseType: ResponseType.bytes));
-    final decoder = utf8.decode(response.data);
+    return parseArticles(_decodeBody(response.data), feed);
+  }
 
-    if (decoder.contains('<feed') && decoder.contains('<entry')) {
-      return _parseAtomArticles(decoder, feed);
-    } else {
-      return _parseRssArticles(decoder, feed);
-    }
+  /// 从 XML 文本解析文章列表（纯函数，不触网，可单测）
+  List<Article> parseArticles(String xml, Feed feed) {
+    return _isAtom(xml)
+        ? _parseAtomArticles(xml, feed)
+        : _parseRssArticles(xml, feed);
   }
 
   List<Article> _parseAtomArticles(String xml, Feed feed) {
@@ -99,8 +111,12 @@ class RssService {
         author = entry.authors!.first.name;
       }
 
-      // 解析日期
-      final pubDate = _parseDate(entry.published ?? entry.updated);
+      // AtomItem.updated 是 DateTime?，published 是 String?，两者类型不同。
+      // 旧实现写的是 `_parseDate(entry.published ?? entry.updated)`，
+      // 只带 <updated> 的源（很常见）会把 DateTime 传进期望 String 的形参，
+      // 直接抛 TypeError，整个 Atom 源的解析就挂了。
+      final pubDate =
+          _parseDate(entry.published) ?? entry.updated ?? DateTime.now();
 
       articles.add(Article(
         id: _generateArticleId(feed.id, entry.id ?? link),
@@ -114,7 +130,8 @@ class RssService {
         isRead: false,
         isFavorite: false,
         isCached: false,
-        imageUrl: _extractImage(entry.content ?? entry.summary ?? ''),
+        imageUrl: _extractImage(entry.content ?? entry.summary ?? '',
+            baseUrl: link),
         cachedAt: DateTime.now(),
       ));
     }
@@ -137,11 +154,14 @@ class RssService {
         content: item.content?.value ?? item.description,
         summary: item.description ?? item.content?.value,
         author: item.author ?? item.dc?.creator,
-        pubDate: item.pubDate ?? DateTime.now(),
+        // 有些源只用 dc:date，webfeed 不会把它填进 pubDate，
+        // 旧实现直接回退成 DateTime.now()，导致这类源的文章全部显示「刚刚」且排序错乱
+        pubDate: item.pubDate ?? item.dc?.date ?? DateTime.now(),
         isRead: false,
         isFavorite: false,
         isCached: false,
-        imageUrl: _extractImage(item.content?.value ?? item.description ?? ''),
+        imageUrl: _extractImage(item.content?.value ?? item.description ?? '',
+            baseUrl: item.link),
         cachedAt: DateTime.now(),
       ));
     }
@@ -149,10 +169,13 @@ class RssService {
     return articles;
   }
 
-  /// 解析日期字符串
-  DateTime _parseDate(String? dateStr) {
+  /// 解析日期字符串。解析不了返回 null，由调用方决定回退策略。
+  ///
+  /// 只用于 Atom 的 `published`（webfeed 把它留作 String?）。
+  /// RSS 路径两个日期源（`pubDate` / `dc:date`）都已经是 DateTime。
+  DateTime? _parseDate(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) {
-      return DateTime.now();
+      return null;
     }
 
     // 尝试标准解析
@@ -193,42 +216,57 @@ class RssService {
       return utc.subtract(Duration(minutes: offset));
     }
 
-    return DateTime.now();
+    return null;
   }
 
   /// 抓取全文内容
+  ///
+  /// 失败时向上抛出而不是返回空串 —— 返回空串会让调用方把「没有内容」
+  /// 当成「抓取成功」写进缓存，从而永久毁掉这篇文章的正文。
   Future<String> fetchFullContent(String url) async {
-    try {
-      final response = await _dio.get(url);
-      final document = html_parser.parse(response.data);
+    final response = await _dio.get(url);
+    final document = html_parser.parse(_decodeBody(response.data));
 
-      document
-          .querySelectorAll('script, style, nav, footer, header')
-          .forEach((e) => e.remove());
+    document
+        .querySelectorAll('script, style, nav, footer, header')
+        .forEach((e) => e.remove());
 
-      final article = document.querySelector(
-          'article, .post-content, .article-content, .entry-content, .content, main');
+    final article = document.querySelector(
+        'article, .post-content, .article-content, .entry-content, .content, main');
 
-      if (article != null) {
-        return article.innerHtml;
-      }
-
-      return document.body?.innerHtml ?? '';
-    } catch (e) {
-      return '';
+    if (article != null) {
+      return article.innerHtml;
     }
+
+    return document.body?.innerHtml ?? '';
   }
 
   /// 从 HTML 内容中提取图片 URL
-  String? _extractImage(String html) {
+  String? _extractImage(String html, {String? baseUrl}) {
     if (html.isEmpty) return null;
     try {
       final document = html_parser.parse(html);
       final img = document.querySelector('img');
-      return img?.attributes['src'];
+      if (img == null) return null;
+
+      // 懒加载站点把真实地址放在 data-src/data-original，src 只是占位图
+      final src = img.attributes['data-src'] ??
+          img.attributes['data-original'] ??
+          img.attributes['src'];
+      if (src == null || src.isEmpty) return null;
+
+      return _resolveUrl(src, baseUrl);
     } catch (e) {
       return null;
     }
+  }
+
+  /// 把可能是相对路径的地址补全为绝对地址
+  String _resolveUrl(String url, String? baseUrl) {
+    if (baseUrl == null) return url;
+    final base = Uri.tryParse(baseUrl);
+    if (base == null) return url;
+    return base.resolve(url).toString();
   }
 
   /// 生成 Feed ID
