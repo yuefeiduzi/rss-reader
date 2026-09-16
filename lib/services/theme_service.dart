@@ -15,7 +15,7 @@ class ThemeService extends ChangeNotifier {
 
   /// 初始化主题设置
   Future<void> init() async {
-    final config = await _storage.getConfig();
+    final config = _storage.config;
     _followSystem = config.followSystemTheme;
     // 跟随系统时必须用 ThemeMode.system：旧实现一律用 isDarkMode 算出
     // light/dark，导致「跟随系统」在重启后失效（系统深色也显示浅色）。
@@ -31,7 +31,7 @@ class ThemeService extends ChangeNotifier {
     _followSystem = mode == ThemeMode.system;
     notifyListeners();
 
-    final config = await _storage.getConfig();
+    final config = _storage.config;
     await _storage.updateConfig(config.copyWith(
       isDarkMode: mode == ThemeMode.dark,
       followSystemTheme: _followSystem,

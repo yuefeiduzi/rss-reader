@@ -13,7 +13,11 @@ class RssService {
       responseType: ResponseType.bytes,
       followRedirects: true,
       maxRedirects: 5,
-      validateStatus: (status) => status! < 500,
+      // 只放行 2xx。旧实现写的是 `status < 500`，于是 404 也被当成成功：
+      // 抓全文时会拿“404 Not Found”的错误页当正文渲染并写进缓存，
+      // 抓订阅源时会把错误页当成空源解析。
+      validateStatus: (status) =>
+          status != null && status >= 200 && status < 300,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; RSS Reader/1.0)',
         'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
@@ -269,11 +273,16 @@ class RssService {
     return base.resolve(url).toString();
   }
 
-  /// 生成 Feed ID
-  String _generateId(String url) {
-    final uri = Uri.parse(url);
-    return '${uri.host}${uri.path}'.hashCode.toString();
-  }
+  /// 生成 Feed ID。
+  ///
+  /// 直接用规范化后的完整地址。两个原因：
+  /// 1. 唯一性 —— 早期实现只取 `host + path`，于是
+  ///    `example.com/feed` 与 `example.com/feed?cat=x`（以及
+  ///    端口不同的两个源）会算出同一个 id，导致按 id 取源、取文章、
+  ///    删除、置顶全部作用到错误的源上。
+  /// 2. 稳定性 —— id 会被持久化，用 `hashCode` 的话哈希实现一变，
+  ///    历史数据就对不上了。
+  String _generateId(String url) => url;
 
   /// 生成文章 ID
   String _generateArticleId(String feedId, String identifier) {

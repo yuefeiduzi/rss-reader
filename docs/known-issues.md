@@ -10,11 +10,11 @@
 
 | 问题 | 根因 | 证据 |
 |---|---|---|
-| 全文抓取永远返回空串 | `_dio` 的 `BaseOptions` 设了 `ResponseType.bytes`，`response.data` 是 `Uint8List`，直接喂给 `html_parser.parse` 抛 TypeError，又被 `catch → return ''` 吞掉；空串还会被写进缓存 | 修复后实测日志 `全文抓取完成, 内容长度: 147` |
-| 只有 `<updated>` 的 Atom 源解析崩溃 | `AtomItem.updated` 是 `DateTime?`、`published` 是 `String?`；代码写的是 `_parseDate(entry.published ?? entry.updated)`，把 DateTime 传进期望 String 的形参 | `test/rss_service_test.dart` 中的回归测试 |
+| `CupertinoPageTransitionsBuilder` 编译失败 | Flutter 3.47 起不再由 `material.dart` 导出（PR #179776） | `flutter analyze` |
+| Atom 源只有 `<updated>` 时解析崩溃 | `AtomItem.updated` 是 `DateTime?`、`published` 是 `String?`；代码把 DateTime 传进期望 String 的形参 | `test/rss_service_test.dart` |
 | `dc:date` 未生效 | RSS 路径写的是 `item.pubDate ?? DateTime.now()`，而 webfeed 不会把 `dc:date` 填进 `pubDate` | 实测：`dc:date`-only 条目 `pubDate` 为 `null` |
-| 正文相对图片 404 | 未按文章链接补全，`flutter_html` 相对应用自身域名解析 | 修复前 `GET /img.png` 打在应用端口 → 404；修复后打在文章域名 → 200 |
-| 时间显示差 8 小时 | 两处 `_formatDateTime` 都漏了 `toLocal()` | 修复前 `2026-09-16 00:00`，修复后 `2026-09-16 08:00`（源为 `+0800`） |
+| 正文相对图片 404 | 未按文章链接补全，渲染引擎相对应用自身域名解析 | 修复前 `GET /img.png` 打在应用端口 → 404；修复后打在文章域名 → 200 |
+| 时间显示差 8 小时 | 两处 `_formatDateTime` 都漏了 `toLocal()` | 修复前 `2026-09-16 00:00`，修复后 `08:00`（源为 `+0800`） |
 | OPML 导入基本无法工作 | 导入正则要求 `xmlUrl` 紧跟 `text`，而导出与标准 OPML 都把 `xmlUrl` 放在最后 | `test/opml_test.dart` |
 | 导入订阅源数量虚报 | 忽略 `addFeedWithDuplicateCheck` 的返回值，无条件自增 | — |
 | `getAllArticles(limit)` 的 limit 失效 | 级联 `..take(limit)` 返回的是接收者，`take` 结果被丢弃 | — |
@@ -24,8 +24,13 @@
 | `getAllFeeds` 泄漏内部列表 | 返回内部可变列表，`home_screen` 在其上原地排序 | — |
 | 批量导入 feed id 可能重复 | 用 `millisecondsSinceEpoch` 生成 id | — |
 | `async void` 吞异常 | `_deleteFeed` / `_togglePinFeed` 声明为 `void ... async` | — |
-| `backup_service` 备份文件列表永远为空 | 扫描 `<docs>/backup/*.json`，实际写入 `<docs>/backup_<时间戳>.zip` | — |
-| `CupertinoPageTransitionsBuilder` 编译失败 | Flutter 3.47 起不再由 `material.dart` 导出（PR #179776） | `flutter analyze` |
+| 备份文件列表永远为空 | 扫描 `<docs>/backup/*.json`，实际写入 `<docs>/backup_<时间戳>.zip` | — |
+| **feed id 冲突** | `_generateId` 只取 `host + path`，忽略 query 与端口，两个不同的源会算出同一个 id | 实测：`feed.xml` 与 `feed.xml?v=2` 的 id 都是 `109737834` |
+| **404 错误页被当成正文** | `validateStatus: (s) => s < 500` 让 404 也算成功，于是错误页被渲染并写进全文缓存 | e2e 实测详情页显示 `Error response / Error code: 404` |
+| 删除确认弹两次 | `FeedListTile` 与 `FeedListPanel` 各有一份删除确认 | e2e 实测 |
+| 窄屏双层标题栏 | 子页面自带 Scaffold + AppBar，与外层叠加 | e2e 实测（窄屏） |
+| 过度刷新 | `_loadArticles` 在打开文章返回、切换收藏时都会触发整源网络刷新 | 日志实测：打开文章会出现完整的刷新 + 保存序列 |
+| 添加订阅源重复请求 | 对话框拉一次、调用方再拉一次 | — |
 
 ---
 
@@ -62,25 +67,28 @@ csslib / html / logging），`html` 的版本锁定随之移除。实测渲染�
 
 | 问题 | 位置 | 说明 |
 |---|---|---|
-| 窄屏双层标题栏 | `home_screen.dart` + `article_list_screen.dart` | 两处都提供 Scaffold + AppBar，嵌套后叠加 |
-| 过度刷新 | `article_list_screen.dart` | **实测确认**：打开一篇文章返回后会触发整个订阅源的网络刷新 |
-| 刷新竞态 | `article_list_screen.dart` | `_loadArticles` 与 `_forceRefresh` 两条路径都可能提前把 `_isRefreshing` 置 false |
-| 添加订阅源重复请求 | `add_feed_dialog.dart` + `home_screen.dart` | 预览一次、提交一次、真正添加再一次，最坏 3 次网络请求 |
 | 批量下载图片弹多个保存框 | `article_detail_screen.dart` | 循环调用 `_downloadImage`，每张图各弹一次文件选择器 |
-| 未读徽标异常 | `article_list_screen.dart` | 实测观察到第一张卡片不显示未读徽标，第二张显示；未深究 |
-| 存储层的写入放大 | `storage_service.dart` | 任何一次标记已读都会重新序列化**全部**文章；Web 的 localStorage 有 ~5MB 上限 |
+| 存储层的写入放大 | `storage_service.dart` | 每次落盘都会重新序列化**全部**文章；Web 的 localStorage 有 ~5MB 上限 |
+| 未读标记无「全部已读」 | — | 只能逐篇打开，没有批量操作 |
+
+> **已澄清的误报**：「第一张卡片不显示未读徽标」曾是悬而未决的现象。
+> 实测确认那是**正确行为**——第一篇文章当时已被打开过（`isRead: true`），
+> 徽标本就该消失。清空数据后新建订阅源，三篇文章的徽标均正常渲染。
+> 当时未查 `isRead` 就记为异常，是不严谨的。
 
 ### 2.4 死代码
 
-以下均有代码、无调用者，建议删除或接线：
+**已清理约 220 行**（`_showImagePreview`、`_showImageContextMenu`、
+`_openImageGalleryFromContext`、`_downloadAllImages`）。
 
-- `article_detail_screen.dart`：`_showImagePreview`（约 100 行，单图预览，已被画廊取代）、
-  `_showImageContextMenu`（约 80 行）、`_hasError` 降级分支
+剩余无调用者：
+
 - `cache_service.dart`：`cacheImage` / `getCachedImage`（图片 Base64 缓存）、`getCacheStats`
 - `storage_service.dart`：`clearOldArticles`
 - `backup_service.dart`：`getBackupFiles`、`importOpmlFromZip`
 - `responsive_layout.dart`：`isWideScreen` 与断点枚举
-- `pubspec.yaml`：`provider`、`cached_network_image`（正文用的是 `NetworkImage`，列表用 `Image.network`）
+- `article_detail_screen.dart`：`_hasError` 降级分支（只读不写，永不触发）
+- `pubspec.yaml`：`cached_network_image`（正文用 `NetworkImage`，列表用 `Image.network`）
 
 ### 2.4.1 尝试过但已回退
 
@@ -120,4 +128,18 @@ cd build/web && python3 -m http.server 8099
 #    然后在应用里添加 http://127.0.0.1:8100/feed.xml
 ```
 
-用固定装置（fixture）验证的好处：可以精确控制 RSS 内容，从而覆盖 `dc:date`、懒加载图片、相对路径、短摘要触发全文抓取等边界情况。
+用固定装置（fixture）验证的好处：可以精确控制 RSS 内容，从而覆盖 `dc:date`、
+懒加载图片、相对路径、短摘要触发全文抓取等边界情况。
+
+### 两个踩过的坑
+
+1. **fixture 必须发 `Cache-Control: no-store`。** 否则浏览器会按启发式规则缓存
+   响应：改了 `feed.xml` 之后应用仍在拿旧内容，会误判成解析 bug。
+   （判断方法：看服务器日志里到底有没有收到请求。）
+2. **验证 id 冲突之类的问题时，别用「同路径 + 不同 query」来造第二个源。**
+   修好之前这恰好会撞成同一个 id，反而验证不了想看的东西；换个真实路径。
+
+### 断言未读标记前先查 `isRead`
+
+界面上「没有未读徽标」可能只是因为那篇确实已读。先读一次本地存储确认状态，
+再下结论。

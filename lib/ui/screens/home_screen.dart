@@ -1,175 +1,44 @@
 import 'package:flutter/material.dart';
-import '../components/add_feed_dialog.dart';
-import '../components/edit_feed_dialog.dart';
-import '../components/feed_list_tile.dart';
-import '../components/responsive_layout.dart';
-import '../../models/feed.dart';
+import 'package:provider/provider.dart';
+
 import '../../models/article.dart';
-import '../../services/cache_service.dart';
-import '../../services/rss_service.dart';
+import '../../models/feed.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
-import 'article_list_screen.dart';
+import '../components/feed_list_panel.dart';
+import '../components/responsive_layout.dart';
 import 'article_detail_screen.dart';
+import 'article_list_screen.dart';
 import 'settings_screen.dart';
 
+/// 首页：窄屏单页导航，宽屏左右分栏。
+///
+/// 这里只持有**选中状态**（选中了哪个订阅源、哪篇文章）—— 那是纯粹
+/// 的界面状态。数据本身来自 [StorageService]，它变化时本页会自动重建，
+/// 因此不存在「增删改之后手工刷新列表」的代码。
 class HomeScreen extends StatefulWidget {
-  final StorageService storageService;
-  final ThemeService themeService;
-  final CacheService cacheService;
-
-  const HomeScreen({
-    super.key,
-    required this.storageService,
-    required this.themeService,
-    required this.cacheService,
-  });
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Feed> _feeds = [];
-  Map<String, int> _unreadCounts = {};
-  bool _isLoading = true;
   Feed? _selectedFeed;
   Article? _selectedArticle;
   double _sidebarWidth = 280;
   final double _minSidebarWidth = 200;
   final double _maxSidebarWidth = 450;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadFeeds();
-  }
-
-  Future<void> _loadFeeds() async {
-    final feeds = await widget.storageService.getAllFeeds();
-    // 置顶的订阅源排在前面
-    feeds.sort((a, b) {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return b.addedAt.compareTo(a.addedAt);
-    });
-    // 计算每个订阅源的未读文章数量
-    final unreadCounts = <String, int>{};
-    for (final feed in feeds) {
-      final articles = await widget.storageService.getArticlesByFeed(feed.id);
-      unreadCounts[feed.id] = articles.where((a) => !a.isRead).length;
-    }
-    if (mounted) {
-      setState(() {
-        _feeds = feeds;
-        _unreadCounts = unreadCounts;
-        _isLoading = false;
-      });
-    }
-    debugPrint('[动作] 加载订阅源列表: ${feeds.length} 个订阅源');
-  }
-
-  Future<void> _addFeed(String url, String? customName) async {
-    debugPrint('[动作] 添加订阅源: $url');
-    try {
-      final rssService = RssService();
-      final feed = await rssService.fetchFeed(url);
-      // 如果有自定义名称，设置到 feed 中
-      if (customName != null && customName.isNotEmpty) {
-        final updatedFeed = feed.copyWith(customName: customName);
-        await widget.storageService.addFeed(updatedFeed);
-        debugPrint('[成功] 添加订阅源成功: $customName (${feed.title})');
-      } else {
-        await widget.storageService.addFeed(feed);
-        debugPrint('[成功] 添加订阅源成功: ${feed.title}');
-      }
-      await _loadFeeds();
-    } catch (e) {
-      debugPrint('[错误] 添加订阅源失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to add feed: $e'),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-      }
-    }
-  }
-
-  void _editFeedName(Feed feed) {
-    showDialog(
-      context: context,
-      builder: (context) => EditFeedDialog(
-        feed: feed,
-        onSave: (newName) => _updateFeedName(feed, newName),
-      ),
-    );
-  }
-
-  Future<void> _updateFeedName(Feed feed, String newName) async {
-    debugPrint('[动作] 修改订阅源名称: ${feed.displayTitle} -> $newName');
-    final updatedFeed = feed.copyWith(customName: newName);
-    await widget.storageService.updateFeed(updatedFeed);
-    await _loadFeeds();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已更新名称为 "$newName"'),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    }
-  }
-
-  Future<void> _deleteFeed(Feed feed) async {
-    debugPrint('[动作] 删除订阅源: ${feed.title}');
-    await widget.storageService.deleteFeed(feed.id);
-    await _loadFeeds();
-    debugPrint('[成功] 删除订阅源成功: ${feed.title}');
-    if (_selectedFeed?.id == feed.id) {
-      setState(() {
-        _selectedFeed = null;
-        _selectedArticle = null;
-      });
-    }
-  }
-
-  Future<void> _togglePinFeed(Feed feed) async {
-    debugPrint('[动作] ${feed.isPinned ? '取消置顶' : '置顶'}: ${feed.title}');
-    final updatedFeed = feed.copyWith(isPinned: !feed.isPinned);
-    await widget.storageService.updateFeed(updatedFeed);
-    await _loadFeeds();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              feed.isPinned ? '已取消置顶 "${feed.title}"' : '已置顶 "${feed.title}"'),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    }
-  }
-
-  void _onFeedSelected(Feed feed) {
-    debugPrint('[动作] 点击订阅源: ${feed.title}');
+  void _selectFeed(Feed feed) {
     setState(() {
       _selectedFeed = feed;
       _selectedArticle = null;
     });
   }
 
-  void _onArticleSelected(Article article) {
-    debugPrint('[动作] 点击文章: ${article.title}');
-    setState(() {
-      _selectedArticle = article;
-    });
+  void _selectArticle(Article article) {
+    setState(() => _selectedArticle = article);
   }
 
   void _clearSelection() {
@@ -179,335 +48,124 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// 刷新未读文章计数
-  Future<void> _refreshUnreadCounts() async {
-    final unreadCounts = <String, int>{};
-    for (final feed in _feeds) {
-      final articles = await widget.storageService.getArticlesByFeed(feed.id);
-      unreadCounts[feed.id] = articles.where((a) => !a.isRead).length;
-    }
-    if (mounted) {
-      setState(() {
-        _unreadCounts = unreadCounts;
-      });
-    }
-    debugPrint('[动作] 刷新未读计数完成');
-  }
+  /// 宽屏下左侧面板宽度可能被拖动过，选中订阅源时保持当前宽度
+  bool get _hasSelection => _selectedFeed != null || _selectedArticle != null;
 
-  void _navigateToSettings() async {
-    final shouldRefresh = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SettingsScreen(
-          storageService: widget.storageService,
-          themeService: widget.themeService,
-        ),
-      ),
-    );
-    if (shouldRefresh == true && mounted) {
-      await _loadFeeds();
+  /// 右侧内容区。窄屏与宽屏共用，避免两处各写一遍同样的分支。
+  Widget _buildContentPane() {
+    if (_selectedArticle != null) {
+      return ArticleDetailScreen(article: _selectedArticle!);
     }
-  }
-
-  Widget _buildThemeIcon() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    IconData icon;
-    if (isDark) {
-      icon = Icons.dark_mode;
-    } else if (widget.themeService.themeMode == ThemeMode.light) {
-      icon = Icons.light_mode;
-    } else {
-      icon = Icons.brightness_6;
+    if (_selectedFeed != null) {
+      return ArticleListScreen(
+        key: ValueKey('feed-${_selectedFeed!.id}'),
+        feed: _selectedFeed!,
+        onArticleSelected: _selectArticle,
+      );
     }
-    return Icon(icon);
-  }
-
-  /// AppBar 底部分隔线
-  PreferredSize _buildAppBarDivider() {
-    return PreferredSize(
-      preferredSize: const Size(double.infinity, 1),
-      child: Divider(
-        height: 1,
-        thickness: 1,
-        color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
-      ),
-    );
+    return const _NothingSelected();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final themeService = context.watch<ThemeService>();
+
     return ResponsiveLayout(
-      mobileLayout: _buildMobileLayout(),
-      wideScreenLayout: _buildWideScreenLayout(),
+      mobileLayout: _buildMobileLayout(themeService, isDark),
+      wideScreenLayout: _buildWideScreenLayout(themeService, isDark),
     );
   }
 
-  /// 窄屏单页布局（移动端）
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(ThemeService themeService, bool isDark) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _selectedFeed?.title ?? 'RSS Reader',
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.3,
-          ),
-        ),
-        centerTitle: false,
-        leading: _selectedFeed != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: _clearSelection,
-              )
-            : null,
-        actions: [
-          IconButton(
-            icon: _buildThemeIcon(),
-            onPressed: () => widget.themeService.toggleDarkMode(),
-            tooltip: 'Toggle theme',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _navigateToSettings,
-          ),
-        ],
-        bottom: _buildAppBarDivider(),
+      appBar: _buildAppBar(
+        themeService: themeService,
+        isDark: isDark,
+        title: _selectedFeed?.displayTitle ?? 'RSS Reader',
+        // 选中内容后提供返回，用于退回订阅源列表
+        onBack: _hasSelection ? _clearSelection : null,
       ),
-      body: _buildMobileBody(),
-      floatingActionButton: null, // 按钮已移到订阅源列表左下角
+      body: _selectedFeed == null
+          ? FeedListPanel(onFeedSelected: _selectFeed)
+          : _buildContentPane(),
     );
   }
 
-  Widget _buildMobileBody() {
-    if (_isLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 40,
-              height: 40,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '加载中...',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // 如果选中了文章，显示文章详情
-    if (_selectedArticle != null) {
-      return ArticleDetailScreen(
-        article: _selectedArticle!,
-        storageService: widget.storageService,
-        themeService: widget.themeService,
-        cacheService: widget.cacheService,
-      );
-    }
-
-    // 如果选中了订阅源，显示文章列表
-    if (_selectedFeed != null) {
-      return ArticleListScreen(
-        key: ValueKey(_selectedFeed!.id),
-        feed: _selectedFeed!,
-        storageService: widget.storageService,
-        themeService: widget.themeService,
-        cacheService: widget.cacheService,
-        onArticleSelected: _onArticleSelected,
-        onArticleRead: _refreshUnreadCounts,
-      );
-    }
-
-    // 否则显示订阅源列表
-    if (_feeds.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    return _buildFeedList();
-  }
-
-  Widget _buildEmptyState() {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    theme.colorScheme.secondary.withValues(alpha: 0.8),
-                    theme.colorScheme.secondary.withValues(alpha: 0.5),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.secondary.withValues(alpha: 0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.rss_feed,
-                size: 48,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              '暂无订阅源',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurface,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '添加你的第一个 RSS 订阅源，开始阅读',
-              style: TextStyle(
-                fontSize: 14,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            FilledButton.icon(
-              onPressed: () => showDialog(
-                context: context,
-                builder: (ctx) => AddFeedDialog(
-                  onAdd: _addFeed,
-                  existingUrls: _feeds.map((f) => f.url).toList(),
-                ),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('添加订阅源'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFeedList() {
-    return Stack(
-      children: [
-        ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 88),
-          itemCount: _feeds.length,
-          itemBuilder: (context, index) {
-            final feed = _feeds[index];
-            return FeedListTile(
-              feed: feed,
-              unreadCount: _unreadCounts[feed.id] ?? 0,
-              onTap: () => _onFeedSelected(feed),
-              onDelete: () => _deleteFeed(feed),
-              onTogglePin: () => _togglePinFeed(feed),
-              onEdit: () => _editFeedName(feed),
-            );
-          },
-        ),
-        // 添加订阅源按钮 - 左下角位置
-        Positioned(
-          left: 16,
-          bottom: 16,
-          child: FloatingActionButton.small(
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => AddFeedDialog(
-                onAdd: _addFeed,
-                existingUrls: _feeds.map((f) => f.url).toList(),
-              ),
-            ),
-            child: const Icon(Icons.add),
-            backgroundColor: Theme.of(context).colorScheme.secondary,
-            foregroundColor: Theme.of(context).colorScheme.onSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 宽屏分栏布局（macOS/Windows/Web）
-  Widget _buildWideScreenLayout() {
+  Widget _buildWideScreenLayout(ThemeService themeService, bool isDark) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'RSS Reader',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.3,
-          ),
-        ),
-        centerTitle: false,
-        actions: [
-          IconButton(
-            icon: _buildThemeIcon(),
-            onPressed: () => widget.themeService.toggleDarkMode(),
-            tooltip: 'Toggle theme',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _navigateToSettings,
-          ),
-        ],
-        bottom: _buildAppBarDivider(),
+      appBar: _buildAppBar(
+        themeService: themeService,
+        isDark: isDark,
+        title: 'RSS Reader',
       ),
       body: Row(
         children: [
-          // 左侧：订阅源列表（可调整宽度）
           SizedBox(
             width: _sidebarWidth,
-            child: _buildFeedListPanel(),
+            child: FeedListPanel(onFeedSelected: _selectFeed),
           ),
-          // 可拖动的分割线
           _buildResizableDivider(),
-          // 右侧：文章列表或文章内容
-          Expanded(
-            child: _selectedArticle != null
-                ? ArticleDetailScreen(
-                    article: _selectedArticle!,
-                    storageService: widget.storageService,
-                    themeService: widget.themeService,
-                    cacheService: widget.cacheService,
-                  )
-                : _selectedFeed != null
-                    ? ArticleListScreen(
-                        key: ValueKey(_selectedFeed!.id),
-                        feed: _selectedFeed!,
-                        storageService: widget.storageService,
-                        themeService: widget.themeService,
-                        cacheService: widget.cacheService,
-                        onArticleSelected: _onArticleSelected,
-                        onArticleRead: _refreshUnreadCounts,
-                      )
-                    : _buildWideScreenEmptyState(),
-          ),
+          Expanded(child: _buildContentPane()),
         ],
       ),
-      // 按钮已移到订阅源列表左下角
-      floatingActionButton: null,
     );
+  }
+
+  /// 单层 AppBar。子页面（文章列表 / 详情）不再各自提供 Scaffold+AppBar，
+  /// 否则窄屏会出现上下两条标题栏。
+  PreferredSizeWidget _buildAppBar({
+    required ThemeService themeService,
+    required bool isDark,
+    required String title,
+    VoidCallback? onBack,
+  }) {
+    return AppBar(
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
+        ),
+      ),
+      centerTitle: false,
+      leading: onBack == null
+          ? null
+          : IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: onBack,
+            ),
+      actions: [
+        IconButton(
+          icon: Icon(_themeIcon(themeService, isDark)),
+          onPressed: themeService.toggleDarkMode,
+          tooltip: '切换主题',
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings),
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          ),
+        ),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size(double.infinity, 1),
+        child: Divider(
+          height: 1,
+          thickness: 1,
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+        ),
+      ),
+    );
+  }
+
+  IconData _themeIcon(ThemeService themeService, bool isDark) {
+    if (isDark) return Icons.dark_mode;
+    if (themeService.themeMode == ThemeMode.light) return Icons.light_mode;
+    return Icons.brightness_6;
   }
 
   Widget _buildResizableDivider() {
@@ -541,8 +199,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
 
-  Widget _buildWideScreenEmptyState() {
+/// 宽屏下未选择任何内容时的占位。
+class _NothingSelected extends StatelessWidget {
+  const _NothingSelected();
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Center(
@@ -571,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Select a subscription to view articles',
+            '选择一个订阅源开始阅读',
             style: TextStyle(
               fontSize: 16,
               color: theme.colorScheme.onSurfaceVariant,
@@ -580,168 +244,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildFeedListPanel() {
-    final theme = Theme.of(context);
-
-    if (_isLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 32,
-              height: 32,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: theme.colorScheme.secondary,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_feeds.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    theme.colorScheme.secondary.withValues(alpha: 0.6),
-                    theme.colorScheme.secondary.withValues(alpha: 0.3),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                Icons.rss_feed,
-                size: 32,
-                color: theme.colorScheme.secondary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '暂无订阅源',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: () => showDialog(
-                context: context,
-                builder: (ctx) => AddFeedDialog(
-                  onAdd: _addFeed,
-                  existingUrls: _feeds.map((f) => f.url).toList(),
-                ),
-              ),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('添加订阅源'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Stack(
-      children: [
-        Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                border: Border(
-                  bottom: BorderSide(
-                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    '订阅源',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface,
-                      letterSpacing: -0.1,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          theme.colorScheme.secondary,
-                          theme.colorScheme.secondary.withValues(alpha: 0.8),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${_feeds.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(top: 8, bottom: 88),
-                itemCount: _feeds.length,
-                itemBuilder: (context, index) {
-                  final feed = _feeds[index];
-                  return FeedListTile(
-                    feed: feed,
-                    unreadCount: _unreadCounts[feed.id] ?? 0,
-                    onTap: () => _onFeedSelected(feed),
-                    onDelete: () => _deleteFeed(feed),
-                    onTogglePin: () => _togglePinFeed(feed),
-                    onEdit: () => _editFeedName(feed),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-        // 添加订阅源按钮 - 左下角位置
-        Positioned(
-          left: 16,
-          bottom: 16,
-          child: FloatingActionButton.small(
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => AddFeedDialog(
-                onAdd: _addFeed,
-                existingUrls: _feeds.map((f) => f.url).toList(),
-              ),
-            ),
-            child: const Icon(Icons.add),
-            backgroundColor: Theme.of(context).colorScheme.secondary,
-            foregroundColor: Theme.of(context).colorScheme.onSecondary,
-          ),
-        ),
-      ],
     );
   }
 }

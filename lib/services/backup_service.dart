@@ -15,10 +15,10 @@ class BackupService {
   BackupService(this._storage);
 
   /// 导出所有数据为 JSON
-  Future<Map<String, dynamic>> exportToJson() async {
-    final feeds = await _storage.getAllFeeds();
-    final articles = await _storage.getAllArticles(limit: 10000);
-    final config = await _storage.getConfig();
+  Map<String, dynamic> exportToJson() {
+    final feeds = _storage.feeds;
+    final articles = _storage.allArticles;
+    final config = _storage.config;
 
     debugPrint('[导出] 订阅源数量: ${feeds.length}');
     debugPrint('[导出] 文章数量: ${articles.length}');
@@ -33,9 +33,8 @@ class BackupService {
   }
 
   /// 导出订阅源为 OPML（用于其他阅读器兼容）
-  Future<String> exportToOpml(
-      {String title = 'RSS Reader Subscriptions'}) async {
-    final feeds = await _storage.getAllFeeds();
+  String exportToOpml({String title = 'RSS Reader Subscriptions'}) {
+    final feeds = _storage.feeds;
     final buffer = StringBuffer();
 
     buffer.write('<?xml version="1.0" encoding="UTF-8"?>\n');
@@ -91,8 +90,8 @@ class BackupService {
     final zipPath = '${dir.path}/backup_$timestamp.zip';
 
     // 生成 JSON 和 OPML 数据
-    final jsonData = await exportToJson();
-    final opmlData = await exportToOpml();
+    final jsonData = exportToJson();
+    final opmlData = exportToOpml();
 
     // 创建 zip 文件
     final archive = Archive();

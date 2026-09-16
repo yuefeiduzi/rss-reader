@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../models/feed.dart';
+import 'feed_context_menu.dart';
 
 class FeedListTile extends StatefulWidget {
   final Feed feed;
@@ -32,6 +32,23 @@ class _FeedListTileState extends State<FeedListTile>
   double _dragExtent = 0;
   bool _showActions = false;
 
+  /// 弹出右键/长按菜单。删除的二次确认由 [FeedListPanel] 负责，
+  /// 这里只把意图转达出去。
+  void _openMenu([Offset? position]) {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    FeedContextMenu.show(
+      context,
+      feed: widget.feed,
+      renderBox: renderBox,
+      onDelete: widget.onDelete,
+      onTogglePin: widget.onTogglePin,
+      onEdit: widget.onEdit,
+      position: position,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -61,213 +78,6 @@ class _FeedListTileState extends State<FeedListTile>
         });
       }
     });
-  }
-
-  void _showDeleteConfirm() {
-    showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除订阅源'),
-        content: Text('确定要删除 "${widget.feed.title}" 吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red[400],
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    ).then((confirm) {
-      if (confirm == true) {
-        // 直接执行删除，dialog 会自动关闭
-        widget.onDelete();
-      }
-    });
-  }
-
-  void _showContextMenu([Offset? position]) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
-    final Offset offset = position ?? renderBox.localToGlobal(Offset.zero);
-    final Size size = renderBox.size;
-
-    showMenu<int>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        offset.dx,
-        offset.dy + size.height / 2,
-        offset.dx + size.width,
-        offset.dy + size.height / 2,
-      ),
-      items: _buildMenuItems(),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 0,
-      color: isDark
-          ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95)
-          : theme.colorScheme.surface,
-    ).then(_handleMenuSelection);
-  }
-
-  List<PopupMenuEntry<int>> _buildMenuItems() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return [
-      _buildMenuItem(
-        value: 0,
-        icon: widget.feed.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-        iconColor: theme.colorScheme.primary,
-        label: widget.feed.isPinned ? '取消置顶' : '置顶',
-        theme: theme,
-        isDark: isDark,
-      ),
-      _buildMenuItem(
-        value: 1,
-        icon: Icons.edit_outlined,
-        iconColor: theme.colorScheme.onSurfaceVariant,
-        label: '重命名',
-        theme: theme,
-        isDark: isDark,
-      ),
-      _buildMenuItem(
-        value: 3,
-        icon: Icons.link,
-        iconColor: theme.colorScheme.onSurfaceVariant,
-        label: '复制链接',
-        theme: theme,
-        isDark: isDark,
-      ),
-      const PopupMenuDivider(height: 1, indent: 16, endIndent: 16),
-      _buildMenuItem(
-        value: 2,
-        icon: Icons.delete_outline,
-        iconColor: theme.colorScheme.error,
-        label: '删除',
-        isDestructive: true,
-        theme: theme,
-        isDark: isDark,
-      ),
-    ];
-  }
-
-  PopupMenuItem<int> _buildMenuItem({
-    required int value,
-    required IconData icon,
-    required Color iconColor,
-    required String label,
-    required ThemeData theme,
-    required bool isDark,
-    bool isDestructive = false,
-  }) {
-    return PopupMenuItem<int>(
-      value: value,
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: isDestructive
-              ? theme.colorScheme.errorContainer.withValues(alpha: isDark ? 0.15 : 0.1)
-              : Colors.transparent,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: isDestructive
-                    ? theme.colorScheme.error.withValues(alpha: isDark ? 0.2 : 0.1)
-                    : iconColor.withValues(alpha: isDark ? 0.15 : 0.08),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                icon,
-                size: 18,
-                color: isDestructive
-                    ? theme.colorScheme.error
-                    : iconColor,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: isDestructive ? FontWeight.w500 : FontWeight.w400,
-                  color: isDestructive
-                      ? theme.colorScheme.error
-                      : theme.colorScheme.onSurface,
-                  letterSpacing: -0.1,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _handleMenuSelection(int? value) {
-    switch (value) {
-      case 0:
-        widget.onTogglePin?.call();
-        break;
-      case 1:
-        widget.onEdit?.call();
-        break;
-      case 2:
-        _showDeleteConfirm();
-        break;
-      case 3:
-        _copyLink();
-        break;
-    }
-  }
-
-  Future<void> _copyLink() async {
-    try {
-      // macOS 需要短暂延迟
-      await Future.delayed(const Duration(milliseconds: 50));
-      await Clipboard.setData(ClipboardData(text: widget.feed.url));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('已复制链接到剪贴板'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Failed to copy link: $e');
-      // 重试一次
-      try {
-        await Future.delayed(const Duration(milliseconds: 100));
-        await Clipboard.setData(ClipboardData(text: widget.feed.url));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('已复制链接到剪贴板'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } catch (retryError) {
-        debugPrint('Copy link retry failed: $retryError');
-      }
-    }
   }
 
   @override
@@ -349,7 +159,7 @@ class _FeedListTileState extends State<FeedListTile>
                                 Colors.red[400]!.withValues(alpha: 0.7),
                                 Colors.red[400]!.withValues(alpha: 0.9),
                               ],
-                              onTap: _showDeleteConfirm,
+                              onTap: widget.onDelete,
                             ),
                           ],
                         ),
@@ -396,8 +206,8 @@ class _FeedListTileState extends State<FeedListTile>
               widget.onTap();
             }
           },
-          onLongPress: () => _showContextMenu(),
-          onSecondaryTap: () => _showContextMenu(),
+          onLongPress: () => _openMenu(),
+          onSecondaryTapDown: (details) => _openMenu(details.globalPosition),
           child: AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
@@ -489,14 +299,15 @@ class _FeedListTileState extends State<FeedListTile>
                     ),
                     if (widget.unreadCount > 0) _buildUnreadBadge(theme),
                     // 菜单按钮
-                    PopupMenuButton<int>(
+                    IconButton(
                       icon: Icon(
                         Icons.more_vert,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                       padding: EdgeInsets.zero,
-                      onSelected: _handleMenuSelection,
-                      itemBuilder: (context) => _buildMenuItems(),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: '更多操作',
+                      onPressed: () => _openMenu(),
                     ),
                   ],
                 ),

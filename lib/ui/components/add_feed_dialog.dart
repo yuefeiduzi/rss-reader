@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../../models/feed.dart';
 import '../../services/rss_service.dart';
 import '../../utils/feed_url.dart';
 
+/// 添加订阅源对话框。
+///
+/// 只在这里拉取一次 feed：拿到标题用于预览与默认名称，随后把构造好的
+/// [Feed] 交给调用方落库。旧实现在这里拉一次、调用方再拉一次，
+/// 一次添加会发两次网络请求。
 class AddFeedDialog extends StatefulWidget {
-  final Function(String url, String? customName) onAdd;
+  /// 拿到可保存的订阅源，由调用方决定怎么存
+  final Future<void> Function(Feed feed) onAdd;
   final List<String> existingUrls;
 
   const AddFeedDialog({
@@ -54,7 +62,6 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
     }
     _urlController.text = url;
 
-    // 检查是否已存在
     if (_isDuplicate) {
       setState(() => _error = '该订阅源已添加');
       return;
@@ -66,20 +73,12 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
     });
 
     try {
-      // 先获取 feed 信息以获取标题
-      final rssService = RssService();
-      final feed = await rssService.fetchFeed(url);
+      final feed = await context.read<RssService>().fetchFeed(url);
+      final customName = _nameController.text.trim();
 
-      // 设置默认名称为 feed 标题
-      if (_nameController.text.isEmpty) {
-        _nameController.text = feed.title;
-      }
-
-      final customName = _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-          : null;
-
-      await widget.onAdd(url, customName);
+      await widget.onAdd(
+        customName.isEmpty ? feed : feed.copyWith(customName: customName),
+      );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       setState(() => _error = '添加订阅源失败: ${e.toString()}');
@@ -98,8 +97,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
 
     setState(() => _isLoading = true);
     try {
-      final rssService = RssService();
-      final feed = await rssService.fetchFeed(url);
+      final feed = await context.read<RssService>().fetchFeed(url);
       setState(() {
         _fetchedTitle = feed.title;
         _nameController.text = feed.title;

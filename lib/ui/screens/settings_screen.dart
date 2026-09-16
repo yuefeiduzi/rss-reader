@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:provider/provider.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/backup_service.dart';
 import 'features_screen.dart';
 
+/// 设置页。作为独立路由推入，因此自带 Scaffold 与 AppBar。
+///
+/// 服务从 [Provider] 取，不再由调用方透传。
 class SettingsScreen extends StatefulWidget {
-  final StorageService storageService;
-  final ThemeService themeService;
-
-  const SettingsScreen({
-    super.key,
-    required this.storageService,
-    required this.themeService,
-  });
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -26,7 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _backupService = BackupService(widget.storageService);
+    _backupService = BackupService(context.read<StorageService>());
   }
 
   void _showBackupResult(String message) {
@@ -94,9 +91,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
 
         if (mounted) {
-          if (feedCount > 0) {
-            _imported = true;
-          }
           setState(() => _isLoading = false);
         }
         return feedCount > 0;
@@ -147,13 +141,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     IconData icon,
     ThemeMode mode,
   ) {
-    final isSelected = widget.themeService.themeMode == mode;
+    final themeService = context.read<ThemeService>();
+    final isSelected = themeService.themeMode == mode;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          widget.themeService.setThemeMode(mode);
+          themeService.setThemeMode(mode);
           Navigator.of(context).pop();
         },
         borderRadius: BorderRadius.circular(12),
@@ -212,19 +207,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  bool _imported = false;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeService = context.watch<ThemeService>();
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.of(context).pop(_imported);
-        return false;
-      },
-      child: Scaffold(
-        appBar: AppBar(
+    return Scaffold(
+      appBar: AppBar(
           title: const Text(
             'Settings',
             style: TextStyle(
@@ -247,9 +236,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.brightness_6,
                 iconColor: const Color(0xFF8B7355),
                 title: 'Theme',
-                subtitle: widget.themeService.themeMode == ThemeMode.dark
+                subtitle: themeService.themeMode == ThemeMode.dark
                     ? 'Dark'
-                    : widget.themeService.themeMode == ThemeMode.light
+                    : themeService.themeMode == ThemeMode.light
                         ? 'Light'
                         : 'System',
                 onTap: _showThemeDialog,
@@ -314,7 +303,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
-    ),
     );
   }
 

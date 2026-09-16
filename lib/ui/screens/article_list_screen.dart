@@ -1,29 +1,29 @@
 import 'package:flutter/material.dart';
-import '../../models/feed.dart';
+import 'package:provider/provider.dart';
+
 import '../../models/article.dart';
-import '../../services/cache_service.dart';
+import '../../models/feed.dart';
 import '../../services/rss_service.dart';
 import '../../services/storage_service.dart';
-import '../../services/theme_service.dart';
-import '../../utils/date_format.dart';
-import 'article_detail_screen.dart';
+import '../components/article_card.dart';
 
+/// 某个订阅源的文章列表。
+///
+/// 不自带 Scaffold / AppBar：标题栏由 [HomeScreen] 统一提供，否则窄屏下
+/// 会出现上下两条标题栏。
+///
+/// 文章数据直接取自 [StorageService]，写入后由它通知重建，所以这里没有
+/// 「标记已读 / 收藏之后再手工重新加载列表」的代码。
 class ArticleListScreen extends StatefulWidget {
   final Feed feed;
-  final StorageService storageService;
-  final ThemeService themeService;
-  final CacheService cacheService;
-  final void Function(Article article)? onArticleSelected;
-  final VoidCallback? onArticleRead; // 阅读文章后刷新未读计数
+
+  /// 选中某篇文章（由父级决定是替换右侧面板还是整页跳转）
+  final ValueChanged<Article> onArticleSelected;
 
   const ArticleListScreen({
     super.key,
     required this.feed,
-    required this.storageService,
-    required this.themeService,
-    required this.cacheService,
-    this.onArticleSelected,
-    this.onArticleRead,
+    required this.onArticleSelected,
   });
 
   @override
@@ -31,565 +31,198 @@ class ArticleListScreen extends StatefulWidget {
 }
 
 class _ArticleListScreenState extends State<ArticleListScreen> {
-  List<Article> _articles = [];
-  bool _isLoading = false;
+  /// 是否有一次网络刷新正在进行。用于禁用按钮与显示进度条，
+  /// 同时避免自动刷新与下拉刷新叠加成两次请求。
   bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
-    _loadArticles();
+    // 打开某个订阅源时拉一次新内容。只在订阅源切换时触发一次
+    // （父级用 feed.id 作 key），不会因为标记已读、收藏而重跑。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
-  Future<void> _loadArticles() async {
-    setState(() => _isLoading = true);
-    try {
-      debugPrint('[加载缓存] 加载订阅源文章: ${widget.feed.title}');
-      final local =
-          await widget.storageService.getArticlesByFeed(widget.feed.id);
-      // 按发布时间倒序排序
-      local.sort((a, b) => b.pubDate.compareTo(a.pubDate));
-      if (mounted) {
-        setState(() {
-          _articles = local;
-          _isLoading = false;
-        });
-      }
-      // 加载完缓存后自动刷新
-      await _refreshArticles();
-    } catch (e) {
-      debugPrint('[错误] 加载文章失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _refreshArticles() async {
+  Future<void> _refresh() async {
+    if (_isRefreshing) return;
     setState(() => _isRefreshing = true);
+
+    final store = context.read<StorageService>();
+    final rss = context.read<RssService>();
+    final messenger = ScaffoldMessenger.of(context);
+
     try {
-      debugPrint('[动作] 刷新订阅源: ${widget.feed.title}');
-      final rssService = RssService();
-      final newArticles = await rssService.fetchArticles(widget.feed);
-      debugPrint('[成功] 获取到 ${newArticles.length} 篇文章');
-      await widget.storageService.addArticles(newArticles);
-      // 重新加载本地数据
-      final local =
-          await widget.storageService.getArticlesByFeed(widget.feed.id);
-      // 按发布时间倒序排序
-      local.sort((a, b) => b.pubDate.compareTo(a.pubDate));
-      if (mounted) {
-        setState(() {
-          _articles = local;
-        });
-      }
+      final articles = await rss.fetchArticles(widget.feed);
+      await store.addArticles(articles);
+      debugPrint('[成功] ${widget.feed.title}: 获取到 ${articles.length} 篇文章');
     } catch (e) {
-      debugPrint('[错误] 刷新文章失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to refresh: $e')),
-        );
-      }
+      debugPrint('[错误] 刷新失败: $e');
+      messenger.showSnackBar(SnackBar(content: Text('刷新失败: $e')));
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
   }
 
+  /// 清掉本地缓存后重新拉取
   Future<void> _forceRefresh() async {
+    if (_isRefreshing) return;
     setState(() => _isRefreshing = true);
+
+    final store = context.read<StorageService>();
+    final rss = context.read<RssService>();
+    final messenger = ScaffoldMessenger.of(context);
+
     try {
-      debugPrint('[动作] 强制刷新订阅源: ${widget.feed.title}');
-      // 清除该订阅源的缓存文章
-      await widget.storageService.clearArticlesByFeed(widget.feed.id);
-      // 重新拉取
-      final rssService = RssService();
-      final newArticles = await rssService.fetchArticles(widget.feed);
-      debugPrint('[成功] 获取到 ${newArticles.length} 篇文章');
-      await widget.storageService.addArticles(newArticles);
-      // 重新加载本地数据
-      final local =
-          await widget.storageService.getArticlesByFeed(widget.feed.id);
-      // 按发布时间倒序排序
-      local.sort((a, b) => b.pubDate.compareTo(a.pubDate));
-      if (mounted) {
-        setState(() {
-          _articles = local;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('强制刷新完成')),
-        );
-      }
+      await store.clearArticlesByFeed(widget.feed.id);
+      final articles = await rss.fetchArticles(widget.feed);
+      await store.addArticles(articles);
+      messenger.showSnackBar(const SnackBar(content: Text('强制刷新完成')));
     } catch (e) {
       debugPrint('[错误] 强制刷新失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('强制刷新失败: $e')),
-        );
-      }
+      messenger.showSnackBar(SnackBar(content: Text('强制刷新失败: $e')));
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
   }
 
-  void _navigateToDetail(Article article) async {
-    debugPrint('[动作] 打开文章: ${article.title}');
-    await widget.storageService.markAsRead(article.id);
-    // 通知首页刷新未读计数
-    widget.onArticleRead?.call();
-    if (!mounted) return;
-
-    // 如果有回调函数（宽屏模式），调用回调而不是导航
-    if (widget.onArticleSelected != null) {
-      widget.onArticleSelected!(article);
-      _loadArticles();
-      return;
-    }
-
-    // 否则导航到详情页（窄屏模式）
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ArticleDetailScreen(
-          article: article,
-          storageService: widget.storageService,
-          themeService: widget.themeService,
-          cacheService: widget.cacheService,
-        ),
-      ),
-    ).then((_) {
-      _loadArticles();
-      // 返回后也刷新未读计数
-      widget.onArticleRead?.call();
-    });
+  void _open(Article article) {
+    // 不必 await 落盘：状态已在内存生效，列表与未读数会自动更新
+    context.read<StorageService>().markAsRead(article.id);
+    widget.onArticleSelected(article);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(widget.feed.displayTitle,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-            if (widget.feed.description != null &&
-                widget.feed.description!.isNotEmpty)
-              Text(
-                widget.feed.description!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-              ),
-          ],
+    final articles = context.watch<StorageService>().articlesOf(widget.feed.id);
+
+    return Column(
+      children: [
+        _ArticleListHeader(
+          feed: widget.feed,
+          isRefreshing: _isRefreshing,
+          onRefresh: _refresh,
+          onForceRefresh: _forceRefresh,
         ),
-        actions: [
-          // 刷新按钮
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _isRefreshing ? null : _refreshArticles,
-            tooltip: '刷新',
-          ),
-          // 强制刷新按钮
-          IconButton(
-            icon: const Icon(Icons.restart_alt),
-            onPressed: _isRefreshing ? null : _forceRefresh,
-            tooltip: '强制刷新',
-          ),
-        ],
-      ),
-      body: _isLoading && _articles.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : _articles.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.article, size: 64, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      const Text('No articles yet'),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: _refreshArticles,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh'),
-                      ),
-                    ],
+        if (_isRefreshing) const LinearProgressIndicator(minHeight: 2),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: articles.isEmpty
+                ? const _NoArticles()
+                : ListView.builder(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: articles.length,
+                    itemBuilder: (context, index) {
+                      final article = articles[index];
+                      return ArticleCard(
+                        article: article,
+                        onTap: () => _open(article),
+                        onFavorite: () => context
+                            .read<StorageService>()
+                            .toggleFavorite(article.id),
+                      );
+                    },
                   ),
-                )
-              : Stack(
-                  children: [
-                    RefreshIndicator(
-                      onRefresh: _refreshArticles,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(8),
-                        itemCount: _articles.length,
-                        itemBuilder: (context, index) {
-                          final article = _articles[index];
-                          return ArticleCard(
-                            article: article,
-                            onTap: () => _navigateToDetail(article),
-                            onFavorite: () async {
-                              await widget.storageService
-                                  .toggleFavorite(article.id);
-                              _loadArticles();
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                    // 刷新时的顶部进度指示
-                    if (_isRefreshing)
-                      const Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: LinearProgressIndicator(
-                          minHeight: 2,
-                        ),
-                      ),
-                  ],
-                ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class ArticleCard extends StatefulWidget {
-  final Article article;
-  final VoidCallback onTap;
-  final VoidCallback onFavorite;
+class _ArticleListHeader extends StatelessWidget {
+  final Feed feed;
+  final bool isRefreshing;
+  final VoidCallback onRefresh;
+  final VoidCallback onForceRefresh;
 
-  const ArticleCard({
-    super.key,
-    required this.article,
-    required this.onTap,
-    required this.onFavorite,
+  const _ArticleListHeader({
+    required this.feed,
+    required this.isRefreshing,
+    required this.onRefresh,
+    required this.onForceRefresh,
   });
-
-  @override
-  State<ArticleCard> createState() => _ArticleCardState();
-}
-
-class _ArticleCardState extends State<ArticleCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  // 提取纯文本摘要（120字）
-  String _getSummaryText(String? html) {
-    if (html == null) return '';
-    final text = html
-        .replaceAll(RegExp(r'<[^>]+>'), '')
-        .replaceAll(RegExp(r'&nbsp;'), ' ')
-        .replaceAll(RegExp(r'&amp;'), '&')
-        .replaceAll(RegExp(r'&lt;'), '<')
-        .replaceAll(RegExp(r'&gt;'), '>')
-        .replaceAll(RegExp(r'&quot;'), '"')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return text.length > 120 ? '${text.substring(0, 120)}...' : text;
-  }
-
-  // 统一走 utils/date_format.dart，避免和 article_detail_screen 各维护一份
-  String _formatRelativeDate(DateTime date) => formatRelativeDate(date);
-
-  String _formatDateTime(DateTime date) => formatDateTime(date);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final description = feed.description;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTapDown: (_) => _controller.forward(),
-        onTapUp: (_) => _controller.reverse(),
-        onTapCancel: () => _controller.reverse(),
-        onTap: widget.onTap,
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: _scaleAnimation.value,
-              child: child,
-            );
-          },
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: theme.colorScheme.outline.withValues(alpha: 0.3),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: (isDark ? Colors.black : Colors.grey[200]!)
-                      .withValues(alpha: isDark ? 0.3 : 0.5),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 头图
-                if (widget.article.imageUrl != null)
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(16),
-                    ),
-                    child: Stack(
-                      children: [
-                        Image.network(
-                          widget.article.imageUrl!,
-                          height: 180,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                        // 未读标记
-                        if (!widget.article.isRead)
-                          Positioned(
-                            top: 12,
-                            left: 12,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    theme.colorScheme.secondary,
-                                    theme.colorScheme.secondary
-                                        .withValues(alpha: 0.8),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Text(
-                                '未读',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                // 无头图时的内容区域
-                if (widget.article.imageUrl == null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Row(
-                      children: [
-                        if (!widget.article.isRead)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.only(right: 10),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  theme.colorScheme.secondary,
-                                  theme.colorScheme.secondary
-                                      .withValues(alpha: 0.7),
-                                ],
-                              ),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        if (!widget.article.isRead)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  theme.colorScheme.secondary,
-                                  theme.colorScheme.secondary
-                                      .withValues(alpha: 0.8),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              '未读',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                // 内容区域
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 标题
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              widget.article.title,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: widget.article.isRead
-                                    ? FontWeight.w500
-                                    : FontWeight.w600,
-                                color: theme.colorScheme.onSurface,
-                                height: 1.4,
-                                letterSpacing: -0.2,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: widget.onFavorite,
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: Icon(
-                                widget.article.isFavorite
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
-                                key: ValueKey(widget.article.isFavorite),
-                                color: widget.article.isFavorite
-                                    ? const Color(0xFFE57373)
-                                    : theme.colorScheme.outline,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      // 摘要
-                      if (widget.article.summary != null &&
-                          widget.article.summary!.isNotEmpty)
-                        Text(
-                          _getSummaryText(widget.article.summary),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: theme.colorScheme.onSurfaceVariant,
-                            height: 1.5,
-                          ),
-                          maxLines: widget.article.imageUrl != null ? 2 : 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      const SizedBox(height: 12),
-                      // 作者、发布时间、拉取时间
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 第一行：作者
-                          Row(
-                            children: [
-                              if (widget.article.author != null)
-                                Text(
-                                  widget.article.author!,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: theme.colorScheme.tertiary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          // 第二行：发布时间 + 拉取时间
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.rss_feed,
-                                size: 12,
-                                color: theme.colorScheme.outline,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _formatRelativeDate(widget.article.pubDate),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              Container(
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                width: 3,
-                                height: 3,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.outline,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              Icon(
-                                Icons.edit,
-                                size: 11,
-                                color: theme.colorScheme.outline,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _formatDateTime(widget.article.cachedAt),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: theme.colorScheme.outline,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.outline.withValues(alpha: 0.3),
           ),
         ),
       ),
+      child: Row(
+        children: [
+          if (description != null && description.isNotEmpty)
+            Expanded(
+              child: Text(
+                description,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          else
+            const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 20),
+            onPressed: isRefreshing ? null : onRefresh,
+            tooltip: '刷新',
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            icon: const Icon(Icons.restart_alt, size: 20),
+            onPressed: isRefreshing ? null : onForceRefresh,
+            tooltip: '强制刷新（清空本地缓存后重新抓取）',
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoArticles extends StatelessWidget {
+  const _NoArticles();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // 用 ListView 包裹，否则内容为空时 RefreshIndicator 无法下拉
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 96),
+        Icon(
+          Icons.article_outlined,
+          size: 56,
+          color: theme.colorScheme.outline,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '还没有文章',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '下拉或点右上角刷新',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.outline,
+          ),
+        ),
+      ],
     );
   }
 }

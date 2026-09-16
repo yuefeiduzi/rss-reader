@@ -202,17 +202,28 @@ void main() {
   });
 
   group('ID 生成', () {
+    const xml =
+        '<rss version="2.0"><channel><title>a</title></channel></rss>';
+
     test('同一个源链接产生稳定的 feed id', () {
-      expect(service.parseFeed('<rss version="2.0"><channel><title>a</title></channel></rss>',
-              'https://x.example/feed').id,
-          service.parseFeed('<rss version="2.0"><channel><title>b</title></channel></rss>',
-              'https://x.example/feed').id);
+      expect(service.parseFeed(xml, 'https://x.example/feed').id,
+          service.parseFeed(xml, 'https://x.example/feed').id);
     });
 
     test('不同源的 feed id 不同', () {
-      const xml = '<rss version="2.0"><channel><title>a</title></channel></rss>';
       expect(service.parseFeed(xml, 'https://x.example/feed').id,
           isNot(service.parseFeed(xml, 'https://y.example/feed').id));
+    });
+
+    test('仅 query 不同的两个源不会撞成同一个 id', () {
+      // 早期实现只取 host+path，这两个会算出同一个 id
+      expect(service.parseFeed(xml, 'https://x.example/feed').id,
+          isNot(service.parseFeed(xml, 'https://x.example/feed?v=2').id));
+    });
+
+    test('仅端口不同的两个源不会撞成同一个 id', () {
+      expect(service.parseFeed(xml, 'http://127.0.0.1:8100/feed').id,
+          isNot(service.parseFeed(xml, 'http://127.0.0.1:9090/feed').id));
     });
   });
 }

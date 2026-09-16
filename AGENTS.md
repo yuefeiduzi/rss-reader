@@ -48,15 +48,18 @@ flutter run -d chrome           # 开发模式跑 Web
 
 ## 架构
 
-MVVM-like，但没有 ViewModel —— 是 service + StatefulWidget。
+没有 ViewModel —— 是 **service + ChangeNotifier + StatefulWidget**。
+
+服务在 `main.dart` 里创建一次，通过 `MultiProvider` 注入；页面用
+`context.watch` / `context.read` 自取，不再逐层透传。
 
 ```
 lib/
-├── main.dart                 # 入口：初始化 3 个 service 后注入 HomeScreen
+├── main.dart                 # 入口：创建服务 + MultiProvider
 ├── models/                   # Article / Feed / AppConfig，纯数据类 + JSON
 ├── services/
-│   ├── rss_service.dart      # 抓取 + RSS/Atom 解析（含 parseArticles 等纯函数，可单测）
-│   ├── storage_service.dart  # SharedPreferences 持久化，持有 feeds/articles/config 规范状态
+│   ├── storage_service.dart  # 唯一真相来源：ChangeNotifier + 同步读 + 异步写
+│   ├── rss_service.dart      # 抓取 + RSS/Atom 解析（parseFeed/parseArticles 是纯函数）
 │   ├── cache_service.dart    # 全文内容缓存（7 天过期）
 │   ├── theme_service.dart    # ChangeNotifier，主题 + 两份 ThemeData
 │   ── backup_service.dart   # JSON / OPML 备份恢复
@@ -64,11 +67,37 @@ lib/
 │   ├── feed_url.dart         # normalizeFeedUrl
 │   ├── opml.dart             # OPML 解析/生成 + XML 实体转义
 │   ├── date_format.dart      # formatDate / formatDateTime / formatRelativeDate
-│   ── html_content.dart     # extractImageUrls / absolutizeImageUrls
+│   └── html_content.dart     # extractImageUrls / absolutizeImageUrls
 └── ui/
     ├── screens/              # home / article_list / article_detail / settings / features
-    ── components/           # add_feed_dialog / edit_feed_dialog / feed_list_tile / responsive_layout
+    └── components/
+        ├── feed_list_panel.dart    # 订阅源列表面板（增删改闭环，含唯一一份删除确认）
+        ├── feed_list_tile.dart     # 单个订阅源项（手势 / 动画）
+        ├── feed_context_menu.dart  # 订阅源右键、长按菜单
+        ├── article_card.dart       # 文章卡片
+        ├── html_content_view.dart  # 正文 HTML 渲染
+        ├── image_gallery.dart      # 全屏图片画廊
+        └── add_feed_dialog.dart / edit_feed_dialog.dart / responsive_layout.dart
 ```
+
+### 数据流约定
+
+`StorageService` 是唯一真相来源，接口约定是：
+
+- **读是同步的**：`feeds` / `articlesOf(id)` / `unreadCountOf(id)` 直接读内存，
+  不要 `await`。未读数在内部增量维护，**不要**自己遍历文章去数 —— 那是
+  O(源数 × 文章数)。
+- **写会立即返回**：状态先在内存生效并通知监听者，落盘在后台按提交顺序排队。
+  所以**不要**在写完之后手工刷新界面，没有 `_loadFeeds()` 这种东西了。
+- 需要确保落盘完成时（测试、退出前）调 `flush()`。
+
+写新页面时：`context.watch<StorageService>()` 取数据，数据一变界面自动重建。
+
+### 关于 Scaffold
+
+`ArticleListScreen` 与 `ArticleDetailScreen` **不自带 Scaffold / AppBar**，
+它们各自提供一条普通横栏（描述 + 操作按钮）；标题栏由 `HomeScreen` 统一提供，
+否则窄屏会出现上下两条标题栏。独立推入的 `SettingsScreen` 自带 Scaffold 没问题。
 
 **把纯逻辑放进 `lib/utils/` 并写单测**，不要把可测逻辑埋在 widget 的私有方法里。这是刻意建立的约定。
 
@@ -118,7 +147,17 @@ dependency_overrides:
 
 ### 5. `StorageService` 把全部数据存在 SharedPreferences
 
-每次写入都会重新序列化**所有**文章。文章量上来会明显卡顿，且 Web 的 localStorage 有 ~5MB 上限。这是已知的设计债（见 `docs/known-issues.md`）。
+每次写入都会重新序列化**所有**文章。文章量上来会明显卡顿，且 Web 的 localStorage
+有 ~5MB 上限。这是已知的设计债（见 `docs/known-issues.md`）。
+
+注意接口上的对应约定：写操作**不阻塞**、后台排队落盘，所以写入频率不再是
+交互性能瓶颈，但存储量本身的问题依旧存在。
+
+| 功能 | 说明 |
+|---|---|
+| `RssService` 纯函数解析 | `parseFeed` / `parseArticles` 不触网，有单测 |
+| `StorageService` | id 用完整 URL（不是 `hashCode`）—— 它会被持久化，哈希实现变了历史数据就对不上 |
+| 网络层 | 只放行 2xx。写 `status < 500` 会让 404 错误页被当成正文渲染并缓存 |
 
 ## 测试
 
@@ -127,7 +166,8 @@ flutter test                                    # 全部
 flutter test test/opml_test.dart                # 单个文件
 ```
 
-`lib/utils/` 下的模块必须有单测。`test/widget_test.dart` 目前只断言标题，是占位性质。
+`lib/utils/` 下的模块必须有单测。`test/widget_test.dart` 现在覆盖了「写入后界面
+自动更新」这个核心行为，不再只是断言标题。
 
 ## 文档
 
