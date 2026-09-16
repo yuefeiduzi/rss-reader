@@ -2,9 +2,9 @@
 ///
 /// 两个问题会一起出现，所以放在一起解决：
 /// 1. 博客站的正文常写 `<img src="/images/a.jpg">`。相对地址如果不补全，
-///    `flutter_html` 会相对**应用自身**的域名去取图，必然 404。
+///    渲染引擎会相对**应用自身**的域名去取图，必然 404。
 /// 2. 懒加载站点把真实地址放在 `data-src`/`data-original`，`src` 只是占位图；
-///    而 `flutter_html` 只认 `src`，于是永远只显示占位图。
+///    而渲染引擎只认 `src`，于是永远只显示占位图。
 library;
 
 final RegExp _imgTag = RegExp(r'<img\b[^>]*>', caseSensitive: false);
@@ -57,7 +57,7 @@ String absolutizeImageUrls(String html, String? baseUrl) {
     if (_srcAttr.hasMatch(raw)) {
       return raw.replaceFirst(_srcAttr, 'src="$absolute"');
     }
-    // 完全没有 src 时补一个，否则 flutter_html 不会渲染这张图
+    // 完全没有 src 时补一个，否则渲染引擎会忽略这张图
     return '<img src="$absolute"${raw.substring('<img'.length)}';
   });
 }

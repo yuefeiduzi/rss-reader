@@ -1,9 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_html/flutter_html.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,6 +14,7 @@ import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import '../../utils/date_format.dart';
 import '../../utils/html_content.dart';
+import '../components/html_content_view.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
   final Article article;
@@ -82,7 +81,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       }
     }
 
-    // 相对图片地址必须按文章链接补全：否则 flutter_html 会相对应用自身的
+    // 相对图片地址必须按文章链接补全：否则渲染引擎会相对应用自身的
     // 域名去取图，博客站常见的 /images/a.jpg 全部 404。
     _fullContent = absolutizeImageUrls(_fullContent, widget.article.link);
 
@@ -482,6 +481,13 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                       content: _fullContent,
                       link: widget.article.link,
                       onOpenInBrowser: _openInBrowser,
+                      onTapLink: (url) => _openInBrowser(),
+                      onTapImage: (url) {
+                        final images = extractImageUrls(_fullContent);
+                        final index = images.indexOf(url);
+                        _showImageGallery(
+                            context, images, index < 0 ? 0 : index);
+                      },
                     ),
                   ],
                 ),
@@ -872,17 +878,24 @@ String _stripHtml(String html) {
       .trim();
 }
 
-/// 错误边界组件：捕获 flutter_html 渲染错误，降级到纯文本
+/// 渲染异常时的降级展示：纯文本 + 提示 + 浏览器打开。
+///
+/// 注意：`_hasError` 目前只读不写，这个降级分支实际上永远不会进入。
+/// 保留以备接入真正的错误捕获（见 docs/known-issues.md）。
 class ErrorBoundary extends StatefulWidget {
   final String content;
   final String link;
   final VoidCallback onOpenInBrowser;
+  final void Function(String url)? onTapLink;
+  final void Function(String url)? onTapImage;
 
   const ErrorBoundary({
     super.key,
     required this.content,
     required this.link,
     required this.onOpenInBrowser,
+    this.onTapLink,
+    this.onTapImage,
   });
 
   @override
@@ -947,81 +960,11 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
 
     // 正常渲染
     return SelectionArea(
-      child: MouseRegion(
-        cursor: SystemMouseCursors.basic,
-        child: GestureDetector(
-          // 禁用双击放大，避免与文本选择冲突
-          behavior: HitTestBehavior.translucent,
-          child: SizedBox(
-            width: double.infinity,
-            child: Html(
-              data: widget.content,
-              style: {
-                'body': Style(
-                  fontSize: FontSize(16.0),
-                  lineHeight: LineHeight(1.6),
-                  padding: HtmlPaddings.zero,
-                  margin: Margins.zero,
-                ),
-                'p': Style(margin: Margins.only(bottom: 8)),
-                'a': Style(
-                  color: theme.colorScheme.primary,
-                  textDecoration: TextDecoration.underline,
-                ),
-                'img': Style(),
-                'blockquote': Style(
-                  margin: Margins.symmetric(horizontal: 16, vertical: 8),
-                  fontStyle: FontStyle.italic,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                'pre': Style(
-                  margin: Margins.symmetric(vertical: 8),
-                  padding: HtmlPaddings.all(12),
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  fontFamily: 'monospace',
-                  fontSize: FontSize(13.0),
-                  color: theme.colorScheme.onSurfaceVariant,
-                  whiteSpace: WhiteSpace.pre,
-                ),
-                'code': Style(
-                  fontFamily: 'monospace',
-                  fontSize: FontSize(13.0),
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  padding: HtmlPaddings.symmetric(horizontal: 4, vertical: 2),
-                ),
-                'h1': Style(
-                  fontSize: FontSize(24.0),
-                  fontWeight: FontWeight.bold,
-                  margin: Margins.only(top: 16, bottom: 8),
-                ),
-                'h2': Style(
-                  fontSize: FontSize(20.0),
-                  fontWeight: FontWeight.bold,
-                  margin: Margins.only(top: 14, bottom: 6),
-                ),
-                'h3': Style(
-                  fontSize: FontSize(18.0),
-                  fontWeight: FontWeight.bold,
-                  margin: Margins.only(top: 12, bottom: 6),
-                ),
-                'ul': Style(margin: Margins.only(left: 16, bottom: 8)),
-                'ol': Style(margin: Margins.only(left: 16, bottom: 8)),
-                'li': Style(margin: Margins.only(bottom: 4)),
-              },
-              onLinkTap: (url, attributes, element) {
-                if (url != null) {
-                  final uri = Uri.parse(url);
-                  canLaunchUrl(uri).then((can) {
-                    if (can) {
-                      // ignore: flutter_style_tips
-                      Future.value(launchUrl(uri, mode: LaunchMode.externalApplication));
-                    }
-                  });
-                }
-              },
-            ),
-          ),
-        ),
+      child: HtmlContentView(
+        html: widget.content,
+        link: widget.link,
+        onTapLink: widget.onTapLink,
+        onTapImage: widget.onTapImage,
       ),
     );
   }

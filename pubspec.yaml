@@ -31,8 +31,6 @@ dependencies:
 
   # UI
   cached_network_image: ^3.2.3
-  flutter_html: ^3.0.0
-
   # 外部链接和分享
   url_launcher: ^6.2.0
   share_plus: ^9.0.0
@@ -42,7 +40,7 @@ dependencies:
 
   # 压缩
   archive: ^3.6.1
-
+  flutter_widget_from_html_core: ^0.17.4
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -51,13 +49,12 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-# 临时绕开上游断裂，两条都应在后续重构中移除
-# 1) flutter_html 3.0.0（最新版，已停更）违规 import 了 html 包的私有文件
-#    package:html/src/query_selector.dart；html 0.15.5 起该文件的 matches
-#    由顶层函数改为类方法，导致编译失败。长期方案是迁移到
-#    flutter_widget_from_html，而不是一直锁 html 版本。
-# 2) objective_c 9.6.1（2026-09-15 发布）仍引用 code_assets 2.0.0 已删除的
-#    Architecture.arm64e，属上游断裂，锁到 9.6.0。
+# 临时绕开上游断裂。
+# objective_c 9.6.1（2026-09-15 发布）仍引用 code_assets 2.0.0 已删除的
+# Architecture.arm64e，属上游断裂，锁到 9.6.0。
+#
+# （原有的 html: 0.15.4 是为了迁就已停更的 flutter_html 3.0.0，它违规
+#   import 了 html 包的私有文件；渲染引擎迁到 flutter_widget_from_html_core
+#   后冲突消失，该条已移除。）
 dependency_overrides:
-  html: 0.15.4
   objective_c: 9.6.0

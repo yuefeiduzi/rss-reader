@@ -99,8 +99,10 @@ lib/
 | SDK | Dart 3.13.3 |
 | RSS 解析 | `webfeed_plus`（RSS 2.0 / Atom 1.0） |
 | HTTP | `dio` |
-| HTML 解析 | `html`（正文抓取）+ `flutter_html`（渲染） |
+| HTML 解析 | `html`（正文抓取）+ `flutter_widget_from_html_core`（渲染） |
 | 本地存储 | `shared_preferences` |
+
+> `pubspec.yaml` 里剩下的 `dependency_overrides`（`objective_c`）是**必需的**，用于绕开上游依赖断裂。改动前请先读 [AGENTS.md](AGENTS.md)。
 
 > `pubspec.yaml` 里的 `dependency_overrides` 是**必需的**，用于绕开两处上游依赖断裂。改动前请先读 [AGENTS.md](AGENTS.md)。
 

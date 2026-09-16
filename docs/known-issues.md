@@ -31,17 +31,27 @@
 
 ## 二、未修复 —— 需要决策
 
-### 2.1 依赖风险（最高优先级）
+### 2.1 依赖风险
 
-**`flutter_html` 已停更。** 最新版 3.0.0 发布于 2025-03，且违规 import 了 `html` 包的私有文件 `package:html/src/query_selector.dart`（包内自带 TODO 承认了这个风险）。`html` 0.15.5 起 `matches` 由顶层函数改为类方法，直接导致编译失败，目前靠 `pubspec.yaml` 的 `dependency_overrides` 把 `html` 锁在 0.15.4 绕过。
+**`flutter_html` 已迁移完成**（原为最高优先级技术债）。
 
-长期方案：迁移到 `flutter_widget_from_html`（活跃维护）。影响面是整个文章详情页的渲染。
+原问题：`flutter_html` 最新版 3.0.0 发布于 2025-03 后停更，且违规 import 了 `html`
+包的私有文件 `package:html/src/query_selector.dart`（包内自带 TODO 承认该风险）。
+`html` 0.15.5 起 `matches` 由顶层函数改为类方法，直接导致编译失败，当时靠在
+pubspec 里锁定 `html: 0.15.4` 绕过。
+
+现况：渲染引擎已换成 `flutter_widget_from_html_core` 0.17.4（活跃维护，且只依赖
+csslib / html / logging），`html` 的版本锁定随之移除。实测渲染保真度反而更好
+（列表、代码块、标题层级均正确）。渲染逻辑抽出到
+`lib/ui/components/html_content_view.dart`，CSS 映射与颜色转换有单测覆盖。
+
+附带收益：正文图片点击 → 全屏画廊终于接线（此前是死代码）。
 
 ### 2.2 结构问题
 
 | 问题 | 位置 | 说明 |
 |---|---|---|
-| 上帝组件 | `article_detail_screen.dart`（约 1040 行） | 混合了加载、全文抓取、收藏、分享、图片下载、Overlay toast |
+| 上帝组件 | `article_detail_screen.dart`（约 970 行） | 混合了加载、全文抓取、收藏、分享、图片下载、Overlay toast。HTML 渲染已抽出到 `ui/components/html_content_view.dart` |
 | 上帝组件 | `home_screen.dart`（约 750 行） | `_buildFeedList` 与 `_buildFeedListPanel` 几乎完全重复 |
 | 上帝组件 | `feed_list_tile.dart`（约 630 行） | 滑动、长按、右键菜单、PopupMenu、头像、徽标、删除确认全在一个文件 |
 | 无状态管理 | 全局 | `provider` 声明在 pubspec 但**零使用**；3 个 service 手工传三层，刷新靠 `_loadFeeds()` 和 `onArticleRead` 回调 |
@@ -64,12 +74,22 @@
 
 以下均有代码、无调用者，建议删除或接线：
 
-- `article_detail_screen.dart`：`_showImagePreview`（约 100 行）、`_showImageContextMenu`（约 80 行）、`_hasError` 降级分支
+- `article_detail_screen.dart`：`_showImagePreview`（约 100 行，单图预览，已被画廊取代）、
+  `_showImageContextMenu`（约 80 行）、`_hasError` 降级分支
 - `cache_service.dart`：`cacheImage` / `getCachedImage`（图片 Base64 缓存）、`getCacheStats`
 - `storage_service.dart`：`clearOldArticles`
 - `backup_service.dart`：`getBackupFiles`、`importOpmlFromZip`
 - `responsive_layout.dart`：`isWideScreen` 与断点枚举
-- `pubspec.yaml`：`provider`、`cached_network_image`（代码里用的是 `Image.network`）
+- `pubspec.yaml`：`provider`、`cached_network_image`（正文用的是 `NetworkImage`，列表用 `Image.network`）
+
+### 2.4.1 尝试过但已回退
+
+**用 `cached_network_image` 缓存正文图片** —— `cached_network_image` 本来就在
+pubspec 里却从未被引用，因此尝试通过覆写 `WidgetFactory.imageProviderFromNetwork`
+把它接入正文渲染。实测在 Web 上会出问题：打开图片画廊再关闭后，正文中同一张图
+会渲染成黑块（移除覆写后黑块消失，已确认由它导致）。已回退为默认的 `NetworkImage`。
+若后续要做图片缓存，建议改用 fwfh 的 `customWidgetBuilder` 自行接管 `img` 元素，
+而不是替换全局 ImageProvider。
 
 ### 2.5 平台
 

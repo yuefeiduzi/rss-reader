@@ -80,7 +80,7 @@ void main() {
       );
     });
 
-    test('没有 src 时补一个，否则 flutter_html 不渲染', () {
+    test('没有 src 时补一个，否则渲染引擎会忽略这张图', () {
       expect(
         absolutizeImageUrls('<img class="x" data-src="/a.jpg">', base),
         '<img src="https://blog.example.com/a.jpg" class="x" data-src="/a.jpg">',
