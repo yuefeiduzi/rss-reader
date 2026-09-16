@@ -66,19 +66,24 @@ flutter analyze                # 应为 0 error
 flutter test                   # 单元测试
 ```
 
-本地跑 Web 版验证：
+端到端验证（Web 端受 CORS 限制抓不到真实 RSS，所以仓库里带了一套本地 fixture）：
 
 ```bash
 flutter build web --release
-cd build/web && python3 -m http.server 8099
-# 打开 http://127.0.0.1:8099/
+python3 -m http.server 8099 --directory build/web   # 应用
+python3 tool/e2e_fixture/serve.py 8100               # 带 CORS 的测试源
+# 打开 http://127.0.0.1:8099/，添加 http://127.0.0.1:8100/feed.xml
 ```
+
+fixture 的每个文件都对应一个修过的缺陷（相对图片路径、懒加载 `data-src`、
+只有 `dc:date` 的源、只有 `<updated>` 的 Atom 源……），改动解析或渲染逻辑后
+应该重跑一遍。详见 [tool/e2e_fixture/README.md](tool/e2e_fixture/README.md)。
 
 ## 项目结构
 
 ```
 lib/
-├── main.dart                 # 入口：初始化服务并注入 HomeScreen
+├── main.dart                 # 入口：创建服务 + MultiProvider 注入
 ├── models/                   # Article / Feed / AppConfig
 ├── services/                 # rss / storage / cache / theme / backup
 ├── utils/                    # 纯函数（有单测覆盖）
@@ -88,8 +93,13 @@ lib/
 │   └── html_content.dart     # 正文图片地址提取与补全
 └── ui/
     ├── screens/              # home / article_list / article_detail / settings / features
-    └── components/           # 对话框与列表项组件
+    └── components/           # 订阅源面板 / 文章卡片 / HTML 渲染 / 图片画廊 等
+
+tool/
+└── e2e_fixture/              # 带 CORS 的本地 RSS/Atom 测试源（见其 README）
 ```
+
+架构与数据流约定见 [AGENTS.md](AGENTS.md)。
 
 ## 技术栈
 

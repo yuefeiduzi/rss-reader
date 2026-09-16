@@ -6,6 +6,27 @@
 
 `rss_reader` —— Flutter 编写的跨平台 RSS/Atom 阅读器。数据全部本地存储（SharedPreferences），无后端、无账号、无同步。
 
+## 当前状态（2026-09-16）
+
+项目停更了 7 个月后被重新拉起，已完成四轮工作：
+
+1. 从零装好 Flutter 3.47.4（原来机器上没装），核实并修掉 16 个缺陷，建立测试地基
+2. 文档校对：删除 `CLAUDE.md`，改写为 `AGENTS.md`；修正了旧文档大量声称但未实现的功能
+3. 渲染引擎从停更的 `flutter_html` 迁到 `flutter_widget_from_html_core`
+4. 拆解上帝组件 + `StorageService` 改为 `ChangeNotifier`（详见 `TODO.md` 的里程碑）
+
+当前：`flutter analyze` 0 error，`flutter test` 70 个测试通过，Web 端 e2e 已验证。
+
+**下一步优先级**（完整清单在 [`TODO.md`](TODO.md)）：
+
+1. 补 Xcode —— 没有它就没有桌面/移动端，而 Web 端因为 CORS 抓不到真实 RSS，
+   相当于只能当 UI 演示
+2. 存储层改造 —— 现在每次落盘都重新序列化全部文章，Web 的 localStorage 有 ~5MB 上限
+3. 清理剩余死代码与无引用依赖（清单在 `docs/known-issues.md` 2.4）
+
+已核实但未修的问题都在 [`docs/known-issues.md`](docs/known-issues.md)，每条附证据。
+**动手前先看它**，避免重复踩已踩过的坑。
+
 ## 平台现状（重要，别被 "跨平台" 误导）
 
 代码有 Android / iOS / macOS / Windows / Linux / Web 六个目录，但**当前开发机只有 Web 能跑**：
@@ -44,7 +65,20 @@ flutter build web --release     # 构建 Web
 flutter run -d chrome           # 开发模式跑 Web
 ```
 
-本地验证 Web 版：`flutter build web --release` 后把 `build/web/` 用任意静态服务器托管即可。
+### 端到端验证
+
+Web 端受 CORS 限制抓不到真实 RSS 源，所以仓库里带了一套本地 fixture
+（`tool/e2e_fixture/`）。需求涉及“真实数据跑通”时用它，不要拿真实站点试：
+
+```bash
+flutter build web --release
+python3 -m http.server 8099 --directory build/web   # 应用
+python3 tool/e2e_fixture/serve.py 8100               # 带 CORS 的测试源
+# 在应用里添加 http://127.0.0.1:8100/feed.xml  或  /atom.xml
+```
+
+fixture 的每个文件都对应一个已修过的缺陷，改动解析/渲染/图片逻辑后应重跑。
+详细说明见 `tool/e2e_fixture/README.md`。
 
 ## 架构
 
@@ -62,7 +96,7 @@ lib/
 │   ├── rss_service.dart      # 抓取 + RSS/Atom 解析（parseFeed/parseArticles 是纯函数）
 │   ├── cache_service.dart    # 全文内容缓存（7 天过期）
 │   ├── theme_service.dart    # ChangeNotifier，主题 + 两份 ThemeData
-│   ── backup_service.dart   # JSON / OPML 备份恢复
+│   └── backup_service.dart   # JSON / OPML 备份恢复
 ├── utils/                    # 纯函数，无 Flutter 依赖，有单测覆盖
 │   ├── feed_url.dart         # normalizeFeedUrl
 │   ├── opml.dart             # OPML 解析/生成 + XML 实体转义
@@ -78,6 +112,9 @@ lib/
         ├── html_content_view.dart  # 正文 HTML 渲染
         ├── image_gallery.dart      # 全屏图片画廊
         └── add_feed_dialog.dart / edit_feed_dialog.dart / responsive_layout.dart
+
+tool/
+└── e2e_fixture/              # 带 CORS 的本地 RSS/Atom 测试源（见其 README）
 ```
 
 ### 数据流约定
@@ -120,17 +157,21 @@ lib/
 
 ### 2. `pubspec.yaml` 里的 `dependency_overrides` 是必需的
 
-两条都是为了绕开上游断裂，**不要顺手删掉**：
+只有一条，为了绕开上游断裂，**不要顺手删掉**：
 
 ```yaml
 dependency_overrides:
-  html: 0.15.4      # flutter_html 3.0.0 违规 import 了 html 包的私有文件
-                    # package:html/src/query_selector.dart；html 0.15.5 起
-                    # matches 由顶层函数改为类方法 → 编译失败
-  objective_c: 9.6.0 # 9.6.1 引用了 code_assets 2.0.0 已删除的 Architecture.arm64e
+  # objective_c 9.6.1（2026-09-15 发布）仍引用 code_assets 2.0.0 已删除的
+  # Architecture.arm64e，属上游断裂
+  objective_c: 9.6.0
 ```
 
-`flutter_html` 已停更（3.0.0 是 2025-03 的版本），长期方案是迁移到 `flutter_widget_from_html`。
+（历史上还有一条 `html: 0.15.4`，是为了迁就已停更的 `flutter_html` ——
+它违规 import 了 `html` 包的私有文件。渲染引擎迁到 `flutter_widget_from_html_core`
+后冲突消失，该条已移除。）
+
+若日后又出现 `dependency_overrides`，请在 pubspec 里写清楚是为了什么，
+否则下一个人不敢删。
 
 ### 3. `dart:io` 在 Web 上能编译但运行时抛异常
 
@@ -168,6 +209,10 @@ flutter test test/opml_test.dart                # 单个文件
 
 `lib/utils/` 下的模块必须有单测。`test/widget_test.dart` 现在覆盖了「写入后界面
 自动更新」这个核心行为，不再只是断言标题。
+
+**单测盖不住的部分要走 e2e**：解析、图片地址、时间显示都有单测，但「真的渲染出来了」
+只能靠 `tool/e2e_fixture/` 跑一遍。历史上多个缺陷（相对图片 404、404 错误页被当成正文）
+都是 e2e 才看到的。
 
 ## 文档
 

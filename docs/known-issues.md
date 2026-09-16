@@ -117,29 +117,28 @@ pubspec 里却从未被引用，因此尝试通过覆写 `WidgetFactory.imagePro
 
 ## 三、如何复现验证
 
-本地 Web 验证需要一个带 CORS 的测试源（真实 RSS 服务器都不发 CORS 头）：
+Web 端受 CORS 限制抓不到真实 RSS 源，因此仓库内带了本地 fixture：
+**`tool/e2e_fixture/`**（用法、每个文件回归什么、有哪些坑，都写在它自己的
+README 里）。
 
 ```bash
-# 1. 构建并托管应用
 flutter build web --release
-cd build/web && python3 -m http.server 8099
-
-# 2. 起一个带 CORS 头的静态服务器，内含 feed.xml / 文章页 / 图片
-#    然后在应用里添加 http://127.0.0.1:8100/feed.xml
+python3 -m http.server 8099 --directory build/web   # 应用
+python3 tool/e2e_fixture/serve.py 8100               # 带 CORS 的测试源
+# 在应用里添加 http://127.0.0.1:8100/feed.xml  或  /atom.xml
 ```
 
-用固定装置（fixture）验证的好处：可以精确控制 RSS 内容，从而覆盖 `dc:date`、
-懒加载图片、相对路径、短摘要触发全文抓取等边界情况。
+fixture 覆盖的回归点：相对图片路径、懒加载 `data-src`、摘要不足触发的全文抓取、
+只有 `dc:date` 的 RSS 条目、只有 `<updated>` 的 Atom 条目。
 
-### 两个踩过的坑
+### 经验
 
-1. **fixture 必须发 `Cache-Control: no-store`。** 否则浏览器会按启发式规则缓存
-   响应：改了 `feed.xml` 之后应用仍在拿旧内容，会误判成解析 bug。
-   （判断方法：看服务器日志里到底有没有收到请求。）
-2. **验证 id 冲突之类的问题时，别用「同路径 + 不同 query」来造第二个源。**
-   修好之前这恰好会撞成同一个 id，反而验证不了想看的东西；换个真实路径。
-
-### 断言未读标记前先查 `isRead`
-
-界面上「没有未读徽标」可能只是因为那篇确实已读。先读一次本地存储确认状态，
-再下结论。
+1. **改动解析/渲染逻辑后要跑 e2e，不能只跑单测。** 单测能覆盖纯函数，
+   但「真的渲染出来了」只有 e2e 看得到 —— 相对图片 404、404 错误页被当成正文、
+   双层标题栏都是这样发现的。
+2. **断言「未读徽标」之前先查 `isRead`。** 界面上没有徽标，可能只是那篇确实已读。
+   曾经把这种情况误报成 bug。
+3. **看服务器日志分清是 curl 还是应用发的请求。** 自己探测过某个 URL 之后，
+   日志里就会出现它，容易误判成回归。
+4. **fixture 必须发 `Cache-Control: no-store`**（`serve.py` 已带），
+   否则浏览器会按启发式规则缓存：改了 feed 之后应用仍在拿旧内容。

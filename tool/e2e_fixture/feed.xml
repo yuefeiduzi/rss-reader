@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  端到端测试用的 RSS 2.0 源。
+
+  每个 item 都对应一个已修复过的缺陷，改动前请先读 tool/e2e_fixture/README.md。
+  注意：新增/删除 item 会改变未读计数，README 里写了各断言期望的值。
+-->
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>本地测试源</title>
+    <link>http://127.0.0.1:8100/</link>
+    <description>用于验证解析链路</description>
+
+    <!-- 1. 富文本正文：覆盖标题层级、列表、代码块、引用、相对图片路径、懒加载图片 -->
+    <item>
+      <title>富文本文章</title>
+      <link>http://127.0.0.1:8100/article1.html</link>
+      <guid>http://127.0.0.1:8100/article1.html</guid>
+      <pubDate>Wed, 16 Sep 2026 08:00:00 +0800</pubDate>
+      <description>摘要很短</description>
+      <content:encoded><![CDATA[
+        <p>只有一点点内容</p>
+        <img src="/img.png">
+        <img src="/placeholder.png" data-src="/img2.png">
+      ]]></content:encoded>
+    </item>
+
+    <!-- 2. 摘要够长，不应触发全文抓取 -->
+    <item>
+      <title>普通文章</title>
+      <link>http://127.0.0.1:8100/article2.html</link>
+      <guid>http://127.0.0.1:8100/article2.html</guid>
+      <pubDate>Tue, 15 Sep 2026 08:00:00 +0800</pubDate>
+      <description><![CDATA[<p>这是一篇正常长度的文章正文，包含足够多的字符以便不会触发全文抓取逻辑，用来验证列表与详情页的基本渲染是否正常工作。</p>]]></description>
+    </item>
+
+    <!-- 3. 摘要不足 200 字符，详情页应去抓 article3.html 的全文 -->
+    <item>
+      <title>短摘要文章</title>
+      <link>http://127.0.0.1:8100/article3.html</link>
+      <guid>http://127.0.0.1:8100/article3.html</guid>
+      <pubDate>Mon, 14 Sep 2026 08:00:00 +0800</pubDate>
+      <description>摘要很短</description>
+    </item>
+
+    <!-- 4. 只用 dc:date、没有 pubDate。
+         回归点：早期实现写的是 item.pubDate ?? DateTime.now()，
+         这类文章会全部显示「刚刚」且排序错乱。 -->
+    <item>
+      <title>只有 dc:date 的文章</title>
+      <link>http://127.0.0.1:8100/article2.html</link>
+      <guid>tag:local,2026:dc-date-only</guid>
+      <dc:date>2020-01-02T03:04:05+08:00</dc:date>
+      <description><![CDATA[<p>这篇文章只有 dc:date，期望显示为 2020-01-02 03:04 而不是当前时间。</p>]]></description>
+    </item>
+
+  </channel>
+</rss>

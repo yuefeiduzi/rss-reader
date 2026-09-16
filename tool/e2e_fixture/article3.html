@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><title>短摘要文章</title></head>
+<body>
+  <nav>导航应当被移除</nav>
+
+  <article>
+    <h1>短摘要文章的完整正文</h1>
+    <p>
+      摘要不足 200 字符时会触发全文抓取。能看到这句话，说明
+      fetchFullContent 把 Uint8List 正确解码成了字符串
+      （早期实现直接把 bytes 传给 HTML 解析器，抛出的 TypeError 被吞掉后
+      返回空串，详情页会是空白）。
+    </p>
+  </article>
+
+  <footer>页脚应当被移除</footer>
+</body>
+</html>

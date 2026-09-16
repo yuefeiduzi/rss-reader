@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><title>富文本文章</title></head>
+<body>
+  <!-- nav / footer 应被 fetchFullContent 移除 -->
+  <nav>导航应当被移除</nav>
+
+  <article>
+    <h1>一级标题</h1>
+    <h2>二级标题</h2>
+    <h3>三级标题</h3>
+
+    <p>
+      这段文字来自 article1.html 的抓取结果。包含一个
+      <a href="https://example.com/link">外部链接</a> 和 <code>行内代码</code>。
+    </p>
+
+    <ul>
+      <li>无序列表项一</li>
+      <li>无序列表项二</li>
+    </ul>
+
+    <ol>
+      <li>有序列表项一</li>
+      <li>有序列表项二</li>
+    </ol>
+
+    <blockquote>这是一段引用文字，应当以斜体与次要文字色显示。</blockquote>
+
+    <pre><code>void main() {
+  print('代码块');
+}</code></pre>
+
+    <p><strong>加粗</strong> 与 <em>斜体</em>。</p>
+
+    <!-- 相对路径图片：期望被 absolutizeImageUrls 补成 /img.png 的绝对地址，
+         否则渲染引擎会相对应用自身的端口去取图，必然 404 -->
+    <img src="/img.png" alt="相对路径图片">
+
+    <!-- 懒加载图片：真实地址在 data-src，期望它被写回 src。
+         placeholder.png 故意不存在：如果它出现在服务器日志里，
+         说明 src 替换回归了 -->
+    <img src="/placeholder.png" data-src="/img2.png" alt="懒加载图片">
+  </article>
+
+  <footer>页脚应当被移除</footer>
+</body>
+</html>
