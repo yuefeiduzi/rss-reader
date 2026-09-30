@@ -61,7 +61,9 @@ macOS debug/release 均可构建。
       但不符合惯例；Android SDK 装好后先拿 `flutter build apk` 验一下
 - [ ] **要分发给别人就得买 Developer ID + 公证**：现状是 ad-hoc 签名，
       `spctl -a -t exec` 返回 rejected。自己用没事（实测从只读 DMG 能启动），
-      别人下载会被 Gatekeeper 拦。见 `tool/build_macos_dmg.sh` 头部注释
+      别人下载会被 Gatekeeper 拦。
+      ⚠️ **换自签名证书解决不了这个问题** —— 证书不在别人信任库里，一样被拦，
+      只是提示语不同。详见 `docs/UNSIGNED.md` 与 AGENTS.md 的「签名：三条路的区别」
 - [ ] 应用图标仍是 Flutter 默认图标
 - [ ] `MainFlutterWindow.swift` 设了默认 1200×800，但没设 `minSize`，
       窗口可以拖到很小，窄屏布局可能崩
@@ -108,7 +110,9 @@ macOS debug/release 均可构建。
       无法注入）
 - [ ] 清理 `pubspec.yaml` 里已无引用的依赖（`cached_network_image`，`lib/` 下只剩一条注释提到它）
 - [ ] 把 `tool/e2e_fixture/` 接进自动化测试（见其 README 末尾）——卡在上面那条 Dio seam
-- [ ] CI：analyze + test + build web（仓库目前没有 `.github/workflows`）
+- [x] **CI**（2026-09-30）：`.github/workflows/ci.yml` —— analyze + test + build web
+      + build macos，每个 PR / push 到 main 都跑；`.github/workflows/release.yml`
+      由 `v*` tag 触发，出 universal DMG + SHA256SUMS + 草稿 Release
 
 ---
 

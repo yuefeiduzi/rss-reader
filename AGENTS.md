@@ -152,7 +152,48 @@ macOS 端不需要任何环境变量前缀。若 `xcodebuild` 报找不到 SDK�
 工程里是 `CODE_SIGN_IDENTITY = "-"`（ad-hoc）。所以 `spctl -a -t exec` 会返回
 `rejected`：只影响**下载来的**包（带 quarantine 位才被 Gatekeeper 拦），
 自己构建自己装的没事 —— 实测从只读 DMG 卷直接启动也能跑。
-要给别人的话得买 Developer ID 并做 notarization。
+
+#### 签名：三条路的区别（别选错）
+
+| 做法 | 下载者能不能直接双击打开 | 成本 |
+|---|---|---|
+| **ad-hoc**（`CODE_SIGN_IDENTITY = "-"`，现在就是这个） | ❌ 仍被拦 | 0 |
+| **自签名证书**（自己生成、导入钥匙串） | ❌ **仍被拦** | 0 |
+| **Developer ID + 公证**（Apple 签发） | ✅ | 99 USD/年 |
+
+**自签名证书解决不了分发问题** —— 证书不在别人的信任库里，下载者那边一样被拦，
+只是提示语不同。它只对「导入了并信任了该证书的那台机器」有效。
+所以本仓库和 [openOTP](https://github.com/yuefeiduzi/openOTP) 都选了
+**ad-hoc + 文档 + 校验和**，而不是去买证书。放行说明在 `docs/UNSIGNED.md`，
+同一个文件会被放进 DMG、也会作为每个 Release 正文的开头。
+
+## 发布
+
+推一个 `v*` tag 即自动出包。详见 [`.github/workflows/release.yml`](.github/workflows/release.yml)。
+
+```bash
+# 1. 改 pubspec.yaml 的 version（唯一一处版本号），跑一遍门槛
+flutter analyze --no-fatal-infos && flutter test
+# 2. 提交后打 tag 并推送（推送由你操作）
+git commit -am "chore(release): v1.0.0"
+git tag v1.0.0 && git push origin main v1.0.0
+# 3. Actions → Release 跑完，到 Releases 检查**草稿**，确认后再 Publish
+```
+
+| Job | 做什么 |
+|---|---|
+| `tests` | 直接调用 `ci.yml`，保证 tag 指向的提交与 main 一样绿 |
+| `version` | tag 去 `v` 后必须等于 `pubspec.yaml` 的版本，否则直接失败、不构建、不发布 |
+| `dmg` | 调 `./tool/build_macos_dmg.sh`（与本地同一个脚本），存 artifact，建草稿 Release |
+
+Release 正文 = `docs/UNSIGNED.md`（放行 + 校验）+ 由 `git log` 生成的提交列表。
+只建**草稿**，对外不可见，你确认后手动 Publish。
+
+> 仓库还没有 `CHANGELOG.md`，所以发布说明是提交列表。哪天补了，
+> 改成切 CHANGELOG 的版本段落就行（openOTP 是那个做法）。
+
+**演练**：Actions → Release → Run workflow（`workflow_dispatch`）只跑检查与构建，
+把 DMG 存成 workflow artifact，**不创建任何 Release**。首次打 tag 前先用它验一遍。
 
 ### 端到端验证
 
@@ -346,6 +387,26 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.version GIT_CONFIG_VALUE_0=HTTP/
 **另注**：`dio` 走 dart:io 默认直连，**不读系统代理**。所以 App 本身抓不到需要
 翻墙的源（实测 `feeds.bbci.co.uk` 超时，`sspai.com` 正常）。这不是 bug，是已知限制。
 
+### 8. `pubspec.lock` 里记着包源 URL，换个 host 就会被静默改写
+
+`pubspec.lock` 的 99 条记录**全部**写着 `url: "https://pub.flutter-io.cn"` ——
+那是本机 `PUB_HOSTED_URL` 的产物，已经提交进仓库了。
+
+后果：**任何没设 `PUB_HOSTED_URL` 的环境（比如 CI、别人新拉的仓库）跑
+`flutter pub get`，pub 会认为 lock 与当前 host 不符，静默重新解析并改写 lock**。
+不是报错，是无声地把 99 条翻成 `pub.dev`：
+
+```bash
+env -u PUB_HOSTED_URL flutter pub get   # 实测："Changed 98 dependencies!"，lock 被改写
+```
+
+所以 `.github/workflows/ci.yml` 里也设了这个变量。**若那个镜像在 GitHub runner
+上太慢或不通，删掉那一行即可**（退回 pub.dev 重新解析，构建照常成功，
+代价只是 CI 不再严格按 lock 构建）。
+
+> 顺带的副作用：谁在没设镜像的机器上跑过 `pub get` 并提交了，谁就会给全仓库
+> 制造一个 99 行的 lock diff。看到这种 diff 先想想是不是这个原因。
+
 ## 测试
 
 ```bash
@@ -362,6 +423,22 @@ flutter test test/opml_test.dart                # 单个文件
 - **macOS 端**：直接添加真实订阅源，没有 CORS 干扰
 - **Web 端**：走 `tool/e2e_fixture/`（每个 fixture 文件都对应一个已修过的缺陷）
 
+### CI 里跑什么
+
+`.github/workflows/ci.yml` 三个 job，每个 PR / push 到 main 都跑：
+
+| Job | 环境 | 内容 |
+|---|---|---|
+| `analysis` | ubuntu | `flutter analyze --no-fatal-infos` + `flutter test` |
+| `build-web` | ubuntu | `flutter build web --release`（只验构建，不验功能） |
+| `build-macos` | macos | `flutter build macos --debug` |
+
+**`--no-fatal-infos` 是必要的，不是放水**：`flutter analyze` 遇到 info 也退出 1
+（已实测），而仓库有 4 条存量 info。error 与 warning 依然会让 CI 变红，
+这正是「analyze 必须 0 error」那条约定的机器化版本。
+
+单测全部 hermetic（不发网络请求），所以 CI 不需要任何 fixture 服务。
+
 ## 文档
 
 | 文件 | 用途 |
@@ -370,5 +447,6 @@ flutter test test/opml_test.dart                # 单个文件
 | `FEATURES.md` | 功能清单，标注真实实现状态 |
 | `TODO.md` | 待办路线图 |
 | `docs/known-issues.md` | 已核实的问题与技术债（含证据） |
+| `docs/UNSIGNED.md` | macOS 首次打开的放行说明（进 DMG，也作为 Release 正文开头） |
 
 写文档时**标注真实状态**。这个仓库的历史文档大量声称未实现的功能（预设订阅源、图片懒加载、`dc:date` 支持、缓存统计等都曾是不实的），别再犯。

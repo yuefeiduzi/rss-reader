@@ -1,0 +1,148 @@
+name: Release
+
+# 推一个 `v*` tag 就是全部触发条件。version job 在 tag 与 pubspec 版本不一致时
+# 直接失败，所以不可能出现「DMG 自称的版本和 tag 不是一回事」。
+#
+# workflow_dispatch 跑同样的检查与同样的构建，但**不碰 Release** ——
+# 首次打 tag 之前，用它把整条构建链路先演练一遍。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 不要取消可能正在发布 Release 的运行：重跑便宜，上传一半的资产不便宜。
+# `-publish` 后缀不是装饰：下面的 tests job 会调用 ci.yml，而 ci.yml 自己的
+# concurrency group 是 `${{ github.workflow }}-${{ github.ref }}` ——
+# 在被调用的 workflow 里 `github.workflow` 是**调用方**的名字，
+# 于是它在这里求值为 `Release-<ref>`。concurrency group 比较时不区分大小写，
+# 而 ci.yml 是 `cancel-in-progress: true`，所以不带后缀的
+# `release-${{ github.ref }}` 会让本运行在被调用方一启动时把自己取消掉。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-publish
+  cancel-in-progress: false
+
+env:
+  # 与 ci.yml 同一个理由：pubspec.lock 里 99 条记录都指向这个镜像，
+  # 不设就会静默重新解析、改写 lock。详见 .github/workflows/ci.yml 的注释。
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+
+jobs:
+  tests:
+    # main 已经拿到的门槛，对着**正在打 tag 的那个提交**再跑一遍：
+    # 用的是同一个 workflow，所以「main 上绿」始终等于「可以打 tag」。
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  version:
+    name: 版本号校验
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 校验 tag 与 pubspec.yaml 是否一致
+        id: read
+        run: |
+          set -euo pipefail
+
+          # pubspec.yaml 是唯一的版本来源：`version: 1.0.0+1`，
+          # `+` 之后是 build number，不参与 tag 比对。
+          # 本仓库只有这一处版本号（不像 openOTP 要同步三处），
+          # 所以这里只做「pubspec 与 tag 是否一致」这一件事。
+          raw="$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//')"
+          version="${raw%%+*}"
+          echo "pubspec.yaml: $raw  →  版本 $version"
+
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "tag:          $GITHUB_REF_NAME"
+            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::tag $GITHUB_REF_NAME 与 pubspec.yaml 的版本 $version 不一致"
+              echo "先改 pubspec.yaml，再重新打 tag。"
+              exit 1
+            fi
+          else
+            echo "（手动触发，无 tag 可比对）"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  dmg:
+    name: Universal DMG
+    needs: [tests, version]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 必须拉全history：下面要用 git describe / git log 生成发布说明，
+          # checkout 默认的 depth=1 会让它们拿不到历史。
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - name: 环境信息
+        run: |
+          flutter --version
+          xcodebuild -version
+          pod --version || echo "::warning::CocoaPods 未安装"
+
+      - run: flutter pub get
+
+      # 本地和 CI 走的是**同一个脚本**，所以两边产物形态一致，
+      # 也不会出现「脚本改了但 CI 没跟上」。脚本里已经包含：
+      # release 构建、DMG 组装、SHA256SUMS.txt、把 docs/UNSIGNED.md 放进包里。
+      - name: 打包
+        run: ./tool/build_macos_dmg.sh
+
+      # workflow_dispatch 演练时发布不了任何东西，靠它把 DMG 取回来；
+      # 真发布时它也是上传失败后的兜底。
+      - uses: actions/upload-artifact@v7
+        with:
+          name: RSS-Reader-${{ needs.version.outputs.version }}-dmg
+          path: build/dist/
+          if-no-files-found: error
+
+      - name: 建草稿 Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # 正文第一部分是放行说明，原样取自 docs/UNSIGNED.md ——
+          # 下载的人应该在读到更新内容之前先看到「为什么会被 Gatekeeper 拦」。
+          # 只维护一份，放在文件里，而不是埋在这个 workflow 的 heredoc 里。
+          cat docs/UNSIGNED.md > release-body.md
+
+          printf '\n---\n\n## 本次更新\n\n' >> release-body.md
+
+          # 本仓库还没有 CHANGELOG.md，所以发布说明直接由提交生成。
+          # 哪天补了 CHANGELOG，就照 openOTP 的做法改成切 CHANGELOG 的版本段落。
+          previous="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          if [ -n "$previous" ]; then
+            echo "提交范围：$previous..$GITHUB_REF_NAME"
+            git log "$previous..$GITHUB_REF_NAME" --no-merges --pretty='- %s' >> release-body.md
+          else
+            echo "没有上一个 tag，列出全部提交（首个 release）"
+            git log "$GITHUB_REF_NAME" --no-merges --pretty='- %s' >> release-body.md
+          fi
+
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --draft \
+            --title "RSS Reader $VERSION" \
+            --notes-file release-body.md \
+            build/dist/*.dmg \
+            build/dist/SHA256SUMS.txt
+
+          echo "草稿已建，但**对外不可见**。检查正文与资产，确认后再 Publish。"
+          echo "注意：正文里的 SHA256 是在打包时现场算的，以附带的 SHA256SUMS.txt 为准。"

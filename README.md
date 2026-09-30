@@ -1,5 +1,7 @@
 # rss_reader
 
+[![CI](https://github.com/yuefeiduzi/rss-reader/actions/workflows/ci.yml/badge.svg)](https://github.com/yuefeiduzi/rss-reader/actions/workflows/ci.yml)
+
 Flutter 编写的跨平台 RSS/Atom 阅读器。数据全部保存在本地（SharedPreferences），无后端、无账号、无云同步。
 
 ## 平台支持现状
@@ -79,11 +81,19 @@ flutter build apk --release    # 需要 Android SDK
 ```bash
 ./tool/build_macos_dmg.sh
 # → build/dist/RSS-Reader-1.0.0-universal.dmg（22MB，x86_64 + arm64）
+# → build/dist/SHA256SUMS.txt
 ```
 
-拖进 Applications 即安装。**未做 Apple 公证**（需付费开发者证书）：
-本机自己构建自己装不受影响，但如果这个包是从网上下载来的，首次打开会被
-Gatekeeper 拦下 —— 按 DMG 里「安装说明.txt」右键打开即可放行。
+拖进 Applications 即安装。GitHub 上每次推 `v*` tag 会自动跑同一个脚本并建一个
+草稿 Release（含 DMG 与 SHA256SUMS.txt），流程见 [AGENTS.md](AGENTS.md) 的「发布」。
+
+**未做 Apple 签名/公证**（需 99 USD/年的开发者账号，本项目的形态用不上）：
+本机自己构建自己装不受影响，但**从网上下载的**包首次打开会被 Gatekeeper 拦 ——
+按 DMG 里的「首次打开请看这里.md」放行一次即可，完整说明见
+[docs/UNSIGNED.md](docs/UNSIGNED.md)。
+
+> 自签名证书解决不了这个问题 —— 证书不在别人信任库里，一样被拦。
+> 唯一能过的是 Developer ID + 公证。详见 [docs/UNSIGNED.md](docs/UNSIGNED.md)。
 
 ### 验证
 
@@ -150,6 +160,7 @@ tool/
 | [FEATURES.md](FEATURES.md) | 功能清单与实现状态 |
 | [TODO.md](TODO.md) | 待办与路线图 |
 | [docs/known-issues.md](docs/known-issues.md) | 已核实的问题与技术债 |
+| [docs/UNSIGNED.md](docs/UNSIGNED.md) | macOS 首次打开的放行说明 |
 | [tool/build_macos_dmg.sh](tool/build_macos_dmg.sh) | 打 macOS 安装包（DMG） |
 
 ## 许可证

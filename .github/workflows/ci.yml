@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # release.yml 把本文件当作 tag 构建的门槛调用，
+  # 这样「tag 指向的提交与 main 一样绿」这件事是被强制保证的，不是靠自觉。
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ── 为什么 CI 里也要设这个 ────────────────────────────────────────────
+  # pubspec.lock 里 99 条记录**全部**指向 pub.flutter-io.cn —— 那是本机
+  # PUB_HOSTED_URL 的产物，已经提交进仓库了。
+  #
+  # 不设它的话 pub 会认为 lock 与当前 host 不符，**静默重新解析并改写 lock**
+  # （实测确认：不会失败，但 99 条全翻成 pub.dev）。后果不是报错，而是
+  # CI 不再按 lock 构建 —— 解析出的版本可能与本地不同，且没人会注意到。
+  #
+  # 若这个镜像在 GitHub runner 上太慢或不通，**删掉这一行即可**：
+  # pub 会退回 pub.dev 重新解析，构建照常成功。
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+
+jobs:
+  analysis:
+    name: 静态分析 + 单测
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - name: 拉依赖
+        run: flutter pub get
+
+      - name: 静态分析
+        # ⚠️ 仓库有 4 条**存量 info**（清单在 TODO.md 的「进行中」）。
+        # flutter analyze 遇到 info 也会退出 1（已实测），所以这里显式放行 info。
+        # error 与 warning 依然会让 CI 变红 —— 这正是 AGENTS.md 里
+        # 「flutter analyze 必须 0 error」那条约定的机器化版本。
+        run: flutter analyze --no-fatal-infos
+
+      - name: 单测
+        # 全部 hermetic：没有任何用例真的发网络请求，
+        # fixture 都是内联字符串（见 test/rss_service_test.dart）。
+        run: flutter test
+
+  build-web:
+    name: Web 构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Web 是保留的 UI 演示目标，构建不能悄悄坏掉。
+      # 注意它**抓不到真实 RSS**（CORS 架构限制，见 AGENTS.md 陷阱 1），
+      # 所以这里只验构建，不验功能。
+      - run: flutter build web --release
+
+  build-macos:
+    name: macOS 构建
+    # macOS 是第一优先级平台，所以它在 CI 里有一席之地 ——
+    # 平台目录、CocoaPods/SPM 集成、entitlements 这些东西坏了，
+    # 只有真在 macOS runner 上编一次才知道。
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - name: 环境信息
+        run: |
+          flutter --version
+          xcodebuild -version
+          pod --version || echo "::warning::CocoaPods 未安装"
+
+      - run: flutter pub get
+
+      - run: flutter build macos --debug
