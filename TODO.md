@@ -2,8 +2,8 @@
 
 详细的已核实问题与技术债见 [docs/known-issues.md](docs/known-issues.md)。本文件只放**路线图**。
 
-最后核对：2026-09-30（在 09-29 的基础上：macOS 完整链路 e2e 自动化跑通；
-复看了 `flutter doctor` —— Android SDK 已装了一部分。逐条证据见文末与 known-issues）
+最后核对：2026-09-30（清掉已完成/失效的旧条目；新增桌面打磨 ①②③ 与图片居中 ④。
+证据都在 docs/known-issues.md 与本文件的里程碑里）
 
 当前基线：`flutter analyze` **0 issues**，`flutter test` 93 个通过，
 `./tool/run_macos_e2e.sh` 6/6 通过；macOS debug/release 均可构建。
@@ -13,57 +13,71 @@
 ## 进行中
 
 （暂无 —— 上一批四项（死代码 / 渲染失败降级 / async-gap 警告 / 批量下载）
-已于 2026-09-30 全部完成，见文末里程碑 E。下一步从下面的路线里挑。）
+已于 2026-09-30 全部完成，见文末里程碑 E。
+新的 4 条在「macOS → 桌面打磨」与「功能 → ④」）
 
 ## 平台路线（优先级已定：macOS → Android → iOS）
 
 这三个的顺序是明确的，别打乱。Web 保留为 UI 演示。
 
-- [x] **macOS 可构建**（2026-09-29）：Xcode 27（27A266a）+ CocoaPods 1.17.0 装齐；
-      `flutter build macos --debug/--release` 通过；app 能启动；
-      实测抓到真实 RSS/Atom 源（少数派 / 阮一峰 / CoolShell）
-- [x] **macOS 可安装**（2026-09-30）：`tool/build_macos_dmg.sh` 产出
-      `build/dist/RSS-Reader-1.0.0-universal.dmg`（22MB，x86_64 + arm64）；
-      已实测挂载后从只读卷直接启动、数据完整。ad-hoc 签名，未公证
-- [ ] **把 macOS 打磨到真正可用** —— 见下方「macOS」
-- [ ] **Android**：补 Android SDK，验证构建
-      （`flutter doctor`：Unable to locate Android SDK）
+- [x] **macOS 可构建 / 可安装**（2026-09-29/30）：Xcode 27 + CocoaPods 1.17.0；
+      debug/release 均通过，实测抓到真实 RSS/Atom；`tool/build_macos_dmg.sh` 出
+      `build/dist/RSS-Reader-1.0.0-universal.dmg`（22MB，x86_64 + arm64，ad-hoc）。
+      完整证据见 [known-issues 2.5.4](docs/known-issues.md)
+- [ ] **Android**：SDK 36.0.0 只装了一部分，缺 cmdline-tools、license 未接受
+      （`flutter doctor`）→ 补齐后 `flutter build apk` 验证。
+      ⚠️ `applicationId` 是 `org.ross.rssReader`，惯例上应为全小写，一并处理
 - [ ] **iOS**（有意排最后）：需要两步前置 ——
       ① `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
-      （见 [AGENTS.md 陷阱 6](AGENTS.md)，macOS 端不受影响所以会伪装成 iOS 独有）
+      （见 [AGENTS.md 陷阱 6](AGENTS.md)：不切的话 macOS 侧也得靠 `DEVELOPER_DIR` 绕过）
       ② 在 Xcode 里选一个 Development Team。
       `ios/Podfile` 的 `use_modular_headers!` 已补好，`pod install` 已能跑通
 - [ ] 为 Web 端引入 CORS 代理层（否则 Web 只能作为 UI 演示）
 
 ## macOS
 
-构建与完整链路都已经通了（2026-09-30 起链路 e2e 自动化，见下）。
-下面剩下的按「离真正能用还差什么」排。
+构建与完整链路都已经通了（2026-09-30 起链路 e2e 自动化）。
+2026-09-30 点名的桌面打磨 ①②③ 排在最前（④ 图片居中在「功能」一节）。
 
-- [x] **macOS 端完整链路 e2e**（2026-09-30）——`integration_test/macos_e2e_test.dart`
-      + `./tool/run_macos_e2e.sh`（起 fixture → 6 个集成测试 → 校验 fixture 请求日志）
-      - 已自动化：加 RSS 源 / 列表渲染（4 篇）/ 详情全文抓取（`Uint8List` 解码回归点）/
-        收藏 / 打开即已读 / 未读数 4→3 / 加 Atom 源（只有 `<updated>`）/ 菜单删除
-        （二次确认 + 级联删文章）/ 备份 zip 落盘→删除→恢复 / OPML 导出与去重导入 /
-        相对图片补全与 `data-src` 回写 / 画廊开关
-      - 日志侧硬证据：`placeholder.png` 与 `article2.html` 均 **0 请求**
-        （前者 = 懒加载回写回归点，后者 = 摘要够长不该抓全文）
-      - 测试 hermetic：SharedPreferences 被 mock 成内存实现，脚本会校验真实 plist 哈希未变
-      - **仍需人工**：图片保存到磁盘、系统分享、浏览器打开原文、设置页里选文件
-        （原生对话框，自动化一碰就卡；备份/OPML 的读写逻辑已用服务层调用覆盖）
+**桌面打磨（2026-09-30 新增）**
+
+- [ ] **① 设计并制作 App 图标** —— 现在六个平台全是 Flutter 默认图标。
+      出 1024×1024 设计稿 → 生成各平台资源：macOS 的
+      `macos/Runner/Assets.xcassets/AppIcon.appiconset/`（16/32/128/256/512，@1x/@2x 全套）、
+      Android mipmap 各密度、iOS AppIcon、Web favicon/PWA。
+      注意 macOS 规范：系统不裁圆角也不加投影，画布四周要自己留白
+      （Apple 网格：1024 画布里内容约占 824，即四周约 10%）。
+      可用 `flutter_launcher_icons` 一次性生成（dev dependency）
+- [ ] **② 窗口默认位置** —— 现在固定开在**屏幕左下角**：`MainFlutterWindow.swift` 里
+      `NSRect(x: 0, y: 0, width: 1200, height: 800)`，Cocoa 坐标原点在左下，
+      而 XIB 里本来就是居中的 800×600（`x=335 y=390`），被这行覆盖掉了。
+      修法二选一：`self.center()`；或加 `setFrameAutosaveName` 记住上次的位置与大小
+      （更符合 macOS 习惯，但要处理「第一次打开」的默认值）
+- [ ] **③ 红绿灯（traffic lights）适配** —— 现在是系统标准标题栏 + Flutter 自绘
+      AppBar，上下两条栏，而且窗口标题和 AppBar 标题都是「RSS Reader」，重复。
+      目标：`titlebarAppearsTransparent` + `titleVisibility = .hidden` +
+      `.fullSizeContentView`，内容顶到窗口顶部、红绿灯浮在侧栏上（像 Mail / Notes）。
+      注意：① 顶栏左侧要给红绿灯留出空间（约 70px），否则「订阅源」表头会被压住；
+      ② 透明标题栏后要确认还能拖窗口（可能得设 `isMovableByWindowBackground`）；
+      ③ 标题只保留一处（建议去掉系统标题栏那份）
+
+**其余**
+
+- [x] **链路 e2e 已自动化**（2026-09-30）：`integration_test/macos_e2e_test.dart` +
+      `./tool/run_macos_e2e.sh`（起 fixture → 6 个用例 → 校验 fixture 请求日志）。
+      覆盖加源 / 列表 / 全文抓取 / 收藏 / 已读 / 未读数 / Atom / 删除 / 备份恢复 /
+      OPML / 图片与画廊；日志侧硬证据：`placeholder.png` 与 `article2.html` 均 0 请求。
+      细节见 [known-issues 2.5.4](docs/known-issues.md)
 - [ ] **`xcode-select` 切到 Xcode**（要 sudo）：它现在还指着 CLT，导致直接跑
       `flutter build macos` / `flutter test -d macos` 会报 “Xcode not installed”
       （两个脚本里靠 `DEVELOPER_DIR` 绕过）。与 iOS 的前置是同一件事，见 traps 6
-- [x] bundle id 已从模板默认的 `com.example.rssReader` 改为 **`org.ross.rssReader`**
-      （2026-09-29，六个平台全部改完，macOS 构建已验）
-      ⚠️ **Android 的 `applicationId` 一般用小写**，`rssReader` 里的大写 R 语法合法
-      但不符合惯例；Android SDK 装好后先拿 `flutter build apk` 验一下
+- [x] bundle id 已改为 **`org.ross.rssReader`**（2026-09-29，六个平台都改了；
+      Android 全小写的惯例问题见「平台路线」的 Android 条目）
 - [ ] **要分发给别人就得买 Developer ID + 公证**：现状是 ad-hoc 签名，
       `spctl -a -t exec` 返回 rejected。自己用没事（实测从只读 DMG 能启动），
       别人下载会被 Gatekeeper 拦。
       ⚠️ **换自签名证书解决不了这个问题** —— 证书不在别人信任库里，一样被拦，
       只是提示语不同。详见 `docs/UNSIGNED.md` 与 AGENTS.md 的「签名：三条路的区别」
-- [ ] 应用图标仍是 Flutter 默认图标
 - [ ] `MainFlutterWindow.swift` 设了默认 1200×800，但没设 `minSize`，
       窗口可以拖到很小，窄屏布局可能崩
 - [ ] **抓不到需要翻墙的源**：`dio` 走 dart:io 默认直连，不读系统代理。
@@ -91,6 +105,13 @@
 
 ## 功能
 
+- [ ] **④ 正文图片默认居中**（2026-09-30 新增；不只 macOS，各平台同一份规则）——
+      现在 `stylesForElement` 里没有 `img` 分支，引擎按默认左对齐。
+      在 `lib/ui/components/html_content_view.dart` 里加规则即可，候选做法
+      （需实测哪种在 fwfh 下生效）：给 `img` 返回 `{'text-align': 'center'}`，
+      或 `display: block` + `margin-left/right: auto`。
+      验证：`test/html_content_view_test.dart` 补一条 CSS 映射断言；
+      `tool/e2e_fixture/article1.html` 里有两张图，跑 e2e 可直接看效果
 - [ ] 国际化：设置页与错误提示是英文（`Theme` / `Backup Now` / `Restore successful!`），
       侧栏与其余页面中文，日期也无本地化
 - [ ] 订阅源分组
@@ -107,29 +128,9 @@
 - [ ] 引入接口 seam 以便 mock：`file_picker` / `share_plus` / `Clipboard` /
       `url_launcher`，以及 `RssService` 的 `Dio`（现在是 `RssService()` 内部 `Dio()`，
       无法注入）；`article_detail_screen` 里的单张/批量下载也各自 `Dio()` 直连
-- [x] ~~清理 `pubspec.yaml` 里已无引用的依赖~~（2026-09-30）：`cached_network_image`
-      连同 13 个传递依赖（sqflite / http / rxdart / flutter_cache_manager …）已移除
-- [x] ~~把 `tool/e2e_fixture/` 接进自动化测试~~（2026-09-30 完成）——
-      `integration_test/macos_e2e_test.dart` + `tool/run_macos_e2e.sh` 已经把 fixture
-      纳入自动化，不再只是手工 e2e；fixture 请求日志还成了「不该抓的没抓」的硬证据。
-      原来记的「卡在 Dio seam」只针对纯 widget 测试：若还想让 ubuntu 上的
-      `flutter test`（CI）用上 fixture，仍需要那条 seam；macOS 侧已经不需要了
-- [x] **CI**（2026-09-30）：`.github/workflows/ci.yml` —— analyze + test + build web
-      + build macos，每个 PR / push 到 main 都跑；`.github/workflows/release.yml`
-      由 `v*` tag 触发，出 universal DMG + SHA256SUMS + 草稿 Release
-
----
-
-## 本轮核对：已不成立的旧条目
-
-| 旧条目 | 现状 |
-|---|---|
-| 文档里到处写的「`flutter test` 70 个」 | **实际 79**（2026-09-30 核实）。删除 5 个配置字段时新增的 `test/config_test.dart` 9 个用例没同步到 AGENTS.md / TODO / known-issues |
-| 死代码：`storage_service.clearOldArticles` | 方法已不存在 |
-| 死代码：`responsive_layout` 的「断点枚举」 | `ResponsiveBreakpoint` 正被 `ResponsiveLayout` 使用，只有在它自己的文件里被引用；死的只有 `isWideScreen` |
-| 移除 `article_detail_screen.dart` 的 `ignore_for_file: use_build_context_synchronously` | 该 ignore 已不在文件里；3 条真实警告已于 2026-09-30 用 `context.mounted` 修掉 |
-| 批量下载图片「每张弹一次保存框」 | 入口已随里程碑 D 删除，是「无此功能」而非「行为不对」（并入「进行中」） |
-| known-issues 2.6 提到的 `WillPopScope` | 代码里已全部是 `PopScope` |
+- [x] **2026-09-30 已完成**：CI（analyze/test/build web/build macos + tag 发版）、
+      把 `tool/e2e_fixture/` 接进自动化（macOS 集成测试）、清掉无引用依赖
+      （`cached_network_image` + 13 个传递依赖）。细节见里程碑 E 与 AGENTS.md
 
 ---
 

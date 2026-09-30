@@ -28,8 +28,9 @@ Web 保留为 UI 演示。iOS 是**有意排后面**，不是放弃 —— 详�
 **下一步优先级**（完整清单在 [`TODO.md`](TODO.md)）：
 
 1. **把 macOS 打磨到真正可用** —— 构建与链路都通了，接下来是桌面体验：
-   应用图标、窗口 `minSize`、系统菜单栏、需翻墙源的代理设置，
-   以及把原生对话框那 4 项人工点一遍（见「测试」）
+   应用图标、窗口默认位置（现在开在屏幕左下角）、红绿灯适配、正文图片居中、
+   窗口 `minSize`、系统菜单栏、需翻墙源的代理设置，
+   以及把原生对话框那几项人工点一遍（见「测试」）
 2. 补 Android SDK（缺 cmdline-tools + license），打通第二个平台
 3. 存储层改造 —— 现在每次落盘都重新序列化全部文章，Web 的 localStorage 有 ~5MB 上限
 4. 清 `analysis_options.yaml` 的 `deprecated_member_use: ignore`（`surfaceVariant` ×4、
