@@ -155,21 +155,6 @@ class BackupService {
     return feedCount;
   }
 
-  /// 从 zip 文件中的 OPML 导入订阅源（用于去重导入）
-  Future<int> importOpmlFromZip(String zipPath) async {
-    final file = File(zipPath);
-    if (!await file.exists()) {
-      throw Exception('Backup file not found');
-    }
-
-    final bytes = await file.readAsBytes();
-    final archive = ZipDecoder().decodeBytes(bytes);
-    final opmlFile = archive.findFile('subscriptions.opml');
-    if (opmlFile == null) return 0;
-
-    return _importSubscriptions(utf8.decode(opmlFile.content));
-  }
-
   /// 从 OPML 文件导入订阅源
   Future<int> importFromOpml(String path) async {
     final file = File(path);
@@ -198,25 +183,5 @@ class BackupService {
       if (await _storage.addFeedWithDuplicateCheck(feed)) count++;
     }
     return count;
-  }
-
-  /// 获取备份文件列表。
-  ///
-  /// [backupToFile] 写的是 `<docs>/backup_<时间戳>.zip`，早期实现却扫描
-  /// `<docs>/backup/*.json`，因此永远返回空列表。
-  Future<List<File>> getBackupFiles({String? directory}) async {
-    final dir = directory != null
-        ? Directory(directory)
-        : await getApplicationDocumentsDirectory();
-    if (!await dir.exists()) return [];
-
-    return dir
-        .listSync()
-        .whereType<File>()
-        .where((f) =>
-            f.uri.pathSegments.last.startsWith('backup_') &&
-            (f.path.endsWith('.zip') || f.path.endsWith('.json')))
-        .toList()
-      ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
   }
 }
