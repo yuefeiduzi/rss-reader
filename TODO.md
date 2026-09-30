@@ -33,6 +33,9 @@ macOS debug/release 均可构建。
 - [x] **macOS 可构建**（2026-09-29）：Xcode 27（27A266a）+ CocoaPods 1.17.0 装齐；
       `flutter build macos --debug/--release` 通过；app 能启动；
       实测抓到真实 RSS/Atom 源（少数派 / 阮一峰 / CoolShell）
+- [x] **macOS 可安装**（2026-09-30）：`tool/build_macos_dmg.sh` 产出
+      `build/dist/RSS-Reader-1.0.0-universal.dmg`（22MB，x86_64 + arm64）；
+      已实测挂载后从只读卷直接启动、数据完整。ad-hoc 签名，未公证
 - [ ] **把 macOS 打磨到真正可用** —— 见下方「macOS」
 - [ ] **Android**：补 Android SDK，验证构建
       （`flutter doctor`：Unable to locate Android SDK）
@@ -56,6 +59,9 @@ macOS debug/release 均可构建。
       （2026-09-29，六个平台全部改完，macOS 构建已验）
       ⚠️ **Android 的 `applicationId` 一般用小写**，`rssReader` 里的大写 R 语法合法
       但不符合惯例；Android SDK 装好后先拿 `flutter build apk` 验一下
+- [ ] **要分发给别人就得买 Developer ID + 公证**：现状是 ad-hoc 签名，
+      `spctl -a -t exec` 返回 rejected。自己用没事（实测从只读 DMG 能启动），
+      别人下载会被 Gatekeeper 拦。见 `tool/build_macos_dmg.sh` 头部注释
 - [ ] 应用图标仍是 Flutter 默认图标
 - [ ] `MainFlutterWindow.swift` 设了默认 1200×800，但没设 `minSize`，
       窗口可以拖到很小，窄屏布局可能崩

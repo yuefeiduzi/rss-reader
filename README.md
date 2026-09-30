@@ -74,6 +74,17 @@ flutter build web --release    # 产物在 build/web/
 flutter build apk --release    # 需要 Android SDK
 ```
 
+### 打包成可安装的 DMG
+
+```bash
+./tool/build_macos_dmg.sh
+# → build/dist/RSS-Reader-1.0.0-universal.dmg（22MB，x86_64 + arm64）
+```
+
+拖进 Applications 即安装。**未做 Apple 公证**（需付费开发者证书）：
+本机自己构建自己装不受影响，但如果这个包是从网上下载来的，首次打开会被
+Gatekeeper 拦下 —— 按 DMG 里「安装说明.txt」右键打开即可放行。
+
 ### 验证
 
 ```bash
@@ -139,6 +150,7 @@ tool/
 | [FEATURES.md](FEATURES.md) | 功能清单与实现状态 |
 | [TODO.md](TODO.md) | 待办与路线图 |
 | [docs/known-issues.md](docs/known-issues.md) | 已核实的问题与技术债 |
+| [tool/build_macos_dmg.sh](tool/build_macos_dmg.sh) | 打 macOS 安装包（DMG） |
 
 ## 许可证
 

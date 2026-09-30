@@ -134,11 +134,25 @@ flutter analyze                 # 静态分析（必须 0 error）
 flutter test                    # 单元测试
 flutter run -d macos            # 开发模式跑 macOS（首选目标）
 flutter build macos --release   # 构建 macOS
+./tool/build_macos_dmg.sh       # 打成 DMG 安装包 → build/dist/
 flutter build web --release     # 构建 Web
 flutter run -d chrome           # 开发模式跑 Web
 ```
 
 macOS 端不需要任何环境变量前缀。若 `xcodebuild` 报找不到 SDK，先看陷阱 6。
+
+### macOS 安装包
+
+```bash
+./tool/build_macos_dmg.sh
+# → build/dist/RSS-Reader-1.0.0-universal.dmg（22MB，含 x86_64 + arm64）
+```
+
+拖进 Applications 即安装。**未做公证** —— 本机没有 Developer ID 证书，
+工程里是 `CODE_SIGN_IDENTITY = "-"`（ad-hoc）。所以 `spctl -a -t exec` 会返回
+`rejected`：只影响**下载来的**包（带 quarantine 位才被 Gatekeeper 拦），
+自己构建自己装的没事 —— 实测从只读 DMG 卷直接启动也能跑。
+要给别人的话得买 Developer ID 并做 notarization。
 
 ### 端到端验证
 
