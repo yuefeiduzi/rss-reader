@@ -74,10 +74,16 @@ python3 tool/e2e_fixture/serve.py 8100
 
 ## 自动化到什么程度
 
-目前这套 fixture 是**手工驱动**的：起两个服务器，然后在浏览器里点。
-`docs/known-issues.md` 记录了完整的手工验证步骤与截图结论。
+**macOS 端已经自动化了**（2026-09-30）：
 
-还没有自动化。要做的话，方向是加一个 widget test：
-用 `SharedPreferences.setMockInitialValues` 注入列表状态，把 `RssService` 换成
-指向本地 fixture 的实现，断言渲染结果。难点是网络层目前不可注入
-（见 `TODO.md` 的「工程」一节）。
+```bash
+./tool/run_macos_e2e.sh     # 起 fixture → 跑集成测试 → 校验本服务器日志
+```
+
+`integration_test/macos_e2e_test.dart` 跑的是真 app（真网络、真文件系统），
+fixture 负责让内容可断言；脚本再用本服务器的请求日志做反向校验
+（`placeholder.png` 与 `article2.html` 必须 0 请求）。原来记的「卡在网络层不可注入」
+只针对纯 widget 测试 —— 集成测试绕开了这个问题。
+
+**Web 端仍是手工驱动**：起两个服务器，然后在浏览器里点（见上面的「跑起来」）。
+CI 跑的是 hermetic 的单测/组件测试，不需要 fixture（见 AGENTS.md「CI 里跑什么」）。

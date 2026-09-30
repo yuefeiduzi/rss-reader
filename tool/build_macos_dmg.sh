@@ -44,8 +44,9 @@ fi
 export PATH
 
 # xcode-select 目前仍指向 CommandLineTools（见 AGENTS.md 陷阱 6）。
-# 它自带 macOS SDK，所以 macOS 构建本来也能过；显式给上是为了别在
-# entitlements / native-assets 那些边角上踩到。CI runner 上已经是好的。
+# 这里不是「给上更保险」—— 实测不给的话 `flutter build macos` 会直接报
+# “Xcode not installed”（flutter_tools 要跑 `xcodebuild -version`），
+# 所以这条 export 是**必需**的。CI runner 上 xcode-select 本来就指向 Xcode。
 if [ -d /Applications/Xcode.app/Contents/Developer ]; then
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi

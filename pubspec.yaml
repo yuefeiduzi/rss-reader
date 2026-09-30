@@ -44,6 +44,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # macOS 端完整链路 e2e（integration_test/macos_e2e_test.dart）
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
 
 flutter:
