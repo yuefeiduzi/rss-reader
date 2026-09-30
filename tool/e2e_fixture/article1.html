@@ -34,13 +34,15 @@
     <p><strong>加粗</strong> 与 <em>斜体</em>。</p>
 
     <!-- 相对路径图片：期望被 absolutizeImageUrls 补成 /img.png 的绝对地址，
-         否则渲染引擎会相对应用自身的端口去取图，必然 404 -->
-    <img src="/img.png" alt="相对路径图片">
+         否则渲染引擎会相对应用自身的端口去取图，必然 404。
+         包在 <p> 里是为了贴近真实源（coolshell 就是 <p><img></p>、少数派是
+         <figure><img></figure>），顺带覆盖「只有图片的容器居中」这条规则 -->
+    <p><img src="/img.png" alt="相对路径图片"></p>
 
     <!-- 懒加载图片：真实地址在 data-src，期望它被写回 src。
          placeholder.png 故意不存在：如果它出现在服务器日志里，
          说明 src 替换回归了 -->
-    <img src="/placeholder.png" data-src="/img2.png" alt="懒加载图片">
+    <p><img src="/placeholder.png" data-src="/img2.png" alt="懒加载图片"></p>
   </article>
 
   <footer>页脚应当被移除</footer>

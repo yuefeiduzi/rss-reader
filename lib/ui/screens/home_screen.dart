@@ -7,6 +7,7 @@ import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import '../components/feed_list_panel.dart';
 import '../components/responsive_layout.dart';
+import '../components/window_drag_area.dart';
 import 'article_detail_screen.dart';
 import 'article_list_screen.dart';
 import 'settings_screen.dart';
@@ -131,6 +132,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       centerTitle: false,
+      // 透明标题栏下让顶栏空白处能拖动窗口（仅 macOS 生效）
+      flexibleSpace: const MacWindowDragArea(),
       leading: onBack == null
           ? null
           : IconButton(

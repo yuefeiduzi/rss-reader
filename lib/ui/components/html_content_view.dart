@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
 
+import '../../utils/html_content.dart';
+
 /// 文章正文的 HTML 渲染。
 ///
 /// 单独成文件的原因：这段渲染逻辑原本内联在 `article_detail_screen.dart`
@@ -88,6 +90,19 @@ class HtmlContentView extends StatelessWidget {
 ///
 /// 只覆盖需要跟随主题的部分，标题尺寸与列表缩进等交给引擎默认值。
 Map<String, String>? stylesForElement(dom.Element element, ThemeData theme) {
+  final styles = _baseStylesForElement(element, theme);
+
+  // 只有图片的容器（`<p><img></p>`、`<figure><img></figure>`）让图片居中。
+  // 图片是行内元素，`text-align` 得落在容器上才生效，所以规则加在容器而不是 img 上。
+  if (isImageOnlyContainer(element)) {
+    return <String, String>{...?styles, 'text-align': 'center'};
+  }
+
+  return styles;
+}
+
+Map<String, String>? _baseStylesForElement(
+    dom.Element element, ThemeData theme) {
   switch (element.localName) {
     case 'a':
       return {

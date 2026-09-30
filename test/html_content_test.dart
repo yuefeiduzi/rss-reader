@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:rss_reader/utils/html_content.dart';
 
 void main() {
@@ -107,6 +109,83 @@ void main() {
     test('无 img 的 HTML 原样返回', () {
       const html = '<p>纯文字</p>';
       expect(absolutizeImageUrls(html, base), html);
+    });
+  });
+
+  group('isImageOnlyContainer', () {
+    dom.Element containerOf(String html) =>
+        html_parser.parse(html).body!.children.first;
+
+    test('只有一张图的块级容器为 true', () {
+      expect(isImageOnlyContainer(containerOf('<p><img src="a.png"></p>')),
+          isTrue);
+      expect(
+        isImageOnlyContainer(containerOf('<figure><img src="a.png"></figure>')),
+        isTrue,
+      );
+      // 常见于真实源的两种包装
+      expect(
+        isImageOnlyContainer(
+            containerOf('<p><a href="#"><img src="a.png"></a></p>')),
+        isTrue,
+      );
+      expect(
+        isImageOnlyContainer(containerOf(
+            '<figure><picture><source srcset="a.webp"><img src="a.png"></picture></figure>')),
+        isTrue,
+      );
+    });
+
+    test('容器里有正文时为 false（否则正文也会被居中）', () {
+      expect(
+        isImageOnlyContainer(containerOf('<p>看图：<img src="a.png"></p>')),
+        isFalse,
+      );
+      expect(
+        isImageOnlyContainer(
+            containerOf('<div><p>正文</p><img src="a.png"></div>')),
+        isFalse,
+      );
+      expect(
+        isImageOnlyContainer(containerOf(
+            '<figure><img src="a.png"><figcaption>图注</figcaption></figure>')),
+        isFalse,
+      );
+    });
+
+    test('行内元素不算容器', () {
+      expect(
+        isImageOnlyContainer(containerOf('<span><img src="a.png"></span>')),
+        isFalse,
+      );
+    });
+
+    test('空白文本（含 &nbsp;）不影响判断', () {
+      expect(
+        isImageOnlyContainer(containerOf('<p> <img src="a.png"> </p>')),
+        isTrue,
+      );
+      expect(
+        isImageOnlyContainer(
+            containerOf('<p>&nbsp;<img src="a.png">&nbsp;</p>')),
+        isTrue,
+      );
+    });
+
+    test('多张图也算「只有图片」', () {
+      expect(
+        isImageOnlyContainer(
+            containerOf('<p><img src="a.png"><img src="b.png"></p>')),
+        isTrue,
+      );
+    });
+
+    test('包装里除了图还有文字时为 false', () {
+      expect(
+        isImageOnlyContainer(
+            containerOf('<p><a href="#">看图<img src="a.png"></a></p>')),
+        isFalse,
+      );
     });
   });
 }

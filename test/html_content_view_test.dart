@@ -49,9 +49,8 @@ void main() {
 
     test('pre 内部的 code 不叠加第二层底色', () {
       // 叠底会渲染出双色块
-      final code = html_parser
-          .parse('<pre><code>x</code></pre>')
-          .querySelector('code')!;
+      final code =
+          html_parser.parse('<pre><code>x</code></pre>').querySelector('code')!;
 
       expect(stylesForElement(code, theme), isNull);
     });
@@ -73,13 +72,18 @@ void main() {
     test('未特殊处理的标签返回 null（交给引擎默认样式）', () {
       expect(stylesForElement(elementOf('<span>x</span>'), theme), isNull);
       expect(stylesForElement(elementOf('<ul><li>x</li></ul>'), theme), isNull);
-      expect(stylesForElement(elementOf('<table><tr><td>x</td></tr></table>'),
-              theme),
+      expect(
+          stylesForElement(
+              elementOf('<table><tr><td>x</td></tr></table>'), theme),
           isNull);
     });
 
     test('标题有明确的字号与加粗', () {
-      for (final (tag, size) in [('h1', '24px'), ('h2', '20px'), ('h3', '18px')]) {
+      for (final (tag, size) in [
+        ('h1', '24px'),
+        ('h2', '20px'),
+        ('h3', '18px')
+      ]) {
         final styles = stylesForElement(elementOf('<$tag>标题</$tag>'), theme);
         expect(styles!['font-size'], size, reason: tag);
         expect(styles['font-weight'], 'bold', reason: tag);
@@ -142,6 +146,43 @@ void main() {
       final htmlWidget = tester.widget<HtmlWidget>(find.byType(HtmlWidget));
 
       expect(htmlWidget.onErrorBuilder, isNull);
+    });
+  });
+
+  group('图片居中', () {
+    // 1×1 的透明 PNG：用 data URI 就不经过网络，测试里能真正解码出 Image
+    const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAA'
+        'AABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    Future<void> pumpHtml(WidgetTester tester, String html) async {
+      await tester.pumpWidget(_wrap(HtmlContentView(
+        html: html,
+        link: 'https://example.com/post',
+      )));
+      for (var i = 0; i < 10 && find.byType(Image).evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets('只有图片的容器：图片水平居中', (tester) async {
+      await pumpHtml(tester, '<p><img src="$tinyPng"></p>');
+
+      expect(find.byType(Image), findsOneWidget, reason: '图片应真的渲染出来');
+      final image = tester.getRect(find.byType(Image));
+      final content = tester.getRect(find.byType(HtmlContentView));
+
+      expect((image.center.dx - content.center.dx).abs(), lessThan(1.5));
+    });
+
+    testWidgets('夹在文字里的图片：保持行内，不被居中', (tester) async {
+      await pumpHtml(tester, '<p>看图：<img src="$tinyPng"> 就是这样</p>');
+
+      expect(find.byType(Image), findsOneWidget);
+      final image = tester.getRect(find.byType(Image));
+      final content = tester.getRect(find.byType(HtmlContentView));
+
+      expect((image.center.dx - content.center.dx).abs(), greaterThan(10),
+          reason: '有正文的段落不该被居中');
     });
   });
 

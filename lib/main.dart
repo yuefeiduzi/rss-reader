@@ -6,6 +6,7 @@ import 'services/rss_service.dart';
 import 'services/storage_service.dart';
 import 'services/theme_service.dart';
 import 'ui/screens/home_screen.dart';
+import 'utils/macos_window.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,9 +61,28 @@ class MyApp extends StatelessWidget {
           theme: theme.lightTheme,
           darkTheme: theme.darkTheme,
           themeMode: theme.themeMode,
+          builder: _withMacOSTitleBarInset,
           home: const HomeScreen(),
         ),
       ),
+    );
+  }
+
+  /// macOS 上把标题栏高度注入 `MediaQuery.padding.top`。
+  ///
+  /// 窗口标题栏是透明的（见 `macos/Runner/MainFlutterWindow.swift`），内容顶到
+  /// 最顶部、红绿灯浮在上面，所以顶栏要比其他平台多留出这条带子 ——
+  /// AppBar 自己会读这个值，不用在每个页面里写 `padding`。
+  Widget _withMacOSTitleBarInset(BuildContext context, Widget? child) {
+    if (child == null) return const SizedBox.shrink();
+    if (!isMacOSDesktop) return child;
+
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        padding: media.padding.copyWith(top: macOSTitleBarHeight),
+      ),
+      child: child,
     );
   }
 }

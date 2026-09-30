@@ -69,10 +69,25 @@ fi
 # 3. 跑集成测试
 # ---------------------------------------------------------------------------
 PREFS="$HOME/Library/Containers/org.ross.rssReader/Data/Library/Preferences/org.ross.rssReader.plist"
-PREFS_BEFORE=""
-if [ -f "$PREFS" ]; then
-  PREFS_BEFORE="$(shasum -a 256 "$PREFS" | awk '{print $1}')"
-fi
+
+# 只比对 flutter.* 三个 key（用户数据）。
+# 同一份 plist 里还有应用自己的状态，比如窗口位置存档
+# ``NSWindow Frame MainWindow``（改窗口位置时会写进去），那不是用户数据。
+prefs_data_hash() {
+  python3 - "$PREFS" <<'PY' 2>/dev/null || echo "unavailable"
+import hashlib, json, plistlib, sys
+try:
+    with open(sys.argv[1], 'rb') as fh:
+        data = plistlib.load(fh)
+except Exception:
+    print('missing')
+    raise SystemExit
+user = {k: data[k] for k in data if k.startswith('flutter.')}
+print(hashlib.sha256(json.dumps(user, sort_keys=True, default=str).encode()).hexdigest())
+PY
+}
+
+PREFS_BEFORE="$(prefs_data_hash)"
 
 echo "[e2e] flutter test integration_test/macos_e2e_test.dart -d macos"
 flutter test integration_test/macos_e2e_test.dart -d macos -r expanded
@@ -81,13 +96,13 @@ STATUS=$?
 # ---------------------------------------------------------------------------
 # 4. 校验
 # ---------------------------------------------------------------------------
-if [ -n "$PREFS_BEFORE" ] && [ -f "$PREFS" ]; then
-  PREFS_AFTER="$(shasum -a 256 "$PREFS" | awk '{print $1}')"
+if [ -n "$PREFS_BEFORE" ]; then
+  PREFS_AFTER="$(prefs_data_hash)"
   if [ "$PREFS_BEFORE" != "$PREFS_AFTER" ]; then
-    echo "[e2e] ⚠️  真实数据文件被改动了。测试本应完全 hermetic，请检查 SharedPreferences mock。"
+    echo "[e2e] ⚠️  用户数据（flutter.* 三个 key）被改动了。测试本应完全 hermetic，请检查 SharedPreferences mock。"
     STATUS=1
   else
-    echo "[e2e] ✓ 用户真实数据未被动过（${PREFS}）"
+    echo "[e2e] ✓ 用户数据未被动过（flutter.* 三个 key 未变）"
   fi
 fi
 

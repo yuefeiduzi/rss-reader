@@ -269,10 +269,44 @@ void main() {
       reason: '占位图不应留在 src 里（是否被真请求过看 fixture 服务器日志）',
     );
 
+    // 图片默认居中：fixture 里两张图各自在一个只有图片的 <p> 里
+    final contentRect = tester.getRect(find.byType(HtmlContentView));
+    final images = find.descendant(
+      of: find.byType(HtmlContentView),
+      matching: find.byType(Image),
+    );
+    expect(images, findsNWidgets(2), reason: '正文里应渲染出两张图');
+    for (var i = 0; i < 2; i++) {
+      final rect = tester.getRect(images.at(i));
+      expect(
+        (rect.center.dx - contentRect.center.dx).abs(),
+        lessThan(2),
+        reason: '第 ${i + 1} 张图应水平居中',
+      );
+    }
+
     await tester.tap(find.text('看大图'));
     await waitFor(tester, find.byIcon(Icons.close), label: '画廊打开');
     await tester.tap(find.byIcon(Icons.close));
     await waitForGone(tester, find.byIcon(Icons.close), label: '画廊关闭');
+  });
+
+  testWidgets('7. 顶栏按钮仍然可用（macOS 拖拽层不吞点击）', (tester) async {
+    await bootApp(tester);
+
+    // 顶栏空白处挂了一层 MacWindowDragArea（把拖动交给原生窗口），
+    // 它不能把按钮的点击也吃掉。
+    final before = theme.themeMode;
+    await tester.tap(find.byTooltip('切换主题'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(theme.themeMode, isNot(before), reason: '主题按钮应生效');
+
+    await tester.tap(find.byIcon(Icons.settings));
+    await waitFor(tester, find.text('Settings'), label: '设置页');
+
+    // 返回首页，给下一个用例（如果有）留个干净状态
+    await tester.pageBack();
+    await waitFor(tester, find.text('订阅源'), label: '回到首页');
   });
 }
 

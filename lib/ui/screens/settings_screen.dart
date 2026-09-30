@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/backup_service.dart';
+import '../components/window_drag_area.dart';
 import 'features_screen.dart';
 
 /// 设置页。作为独立路由推入，因此自带 Scaffold 与 AppBar。
@@ -180,7 +181,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 child: Icon(
                   icon,
-                  color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: isSelected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   size: 20,
                 ),
               ),
@@ -214,15 +217,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-          title: const Text(
-            'Settings',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.3,
-            ),
+        title: const Text(
+          'Settings',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
           ),
-          centerTitle: false,
         ),
+        centerTitle: false,
+        // 同首页：透明标题栏下顶栏空白处可拖动窗口（仅 macOS 生效）
+        flexibleSpace: const MacWindowDragArea(),
+      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
