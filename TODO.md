@@ -2,19 +2,19 @@
 
 详细的已核实问题与技术债见 [docs/known-issues.md](docs/known-issues.md)。本文件只放**路线图**。
 
-最后核对：2026-09-30（清掉已完成/失效的旧条目；新增桌面打磨 ①②③ 与图片居中 ④。
-证据都在 docs/known-issues.md 与本文件的里程碑里）
+最后核对：2026-09-30（清掉已完成/失效的旧条目；桌面打磨 ②③④ 已完成（见里程碑 F），
+只剩 ① 图标。证据都在 docs/known-issues.md 与本文件的里程碑里）
 
-当前基线：`flutter analyze` **0 issues**，`flutter test` 93 个通过，
-`./tool/run_macos_e2e.sh` 6/6 通过；macOS debug/release 均可构建。
+当前基线：`flutter analyze` **0 issues**，`flutter test` 101 个通过，
+`./tool/run_macos_e2e.sh` 7/7 通过；macOS debug/release 均可构建。
 
 ---
 
 ## 进行中
 
 （暂无 —— 上一批四项（死代码 / 渲染失败降级 / async-gap 警告 / 批量下载）
-已于 2026-09-30 全部完成，见文末里程碑 E。
-新的 4 条在「macOS → 桌面打磨」与「功能 → ④」）
+已于 2026-09-30 全部完成（里程碑 E），桌面打磨 ②③④ 也已完成（里程碑 F）。
+下一步：① 图标，或从下面的路线里挑。）
 
 ## 平台路线（优先级已定：macOS → Android → iOS）
 
@@ -37,9 +37,9 @@
 ## macOS
 
 构建与完整链路都已经通了（2026-09-30 起链路 e2e 自动化）。
-2026-09-30 点名的桌面打磨 ①②③ 排在最前（④ 图片居中在「功能」一节）。
+桌面打磨 ②③④ 已完成（见下与里程碑 F），只剩 ① 图标。
 
-**桌面打磨（2026-09-30 新增）**
+**桌面打磨（2026-09-30）**
 
 - [ ] **① 设计并制作 App 图标** —— 现在六个平台全是 Flutter 默认图标。
       出 1024×1024 设计稿 → 生成各平台资源：macOS 的
@@ -48,18 +48,10 @@
       注意 macOS 规范：系统不裁圆角也不加投影，画布四周要自己留白
       （Apple 网格：1024 画布里内容约占 824，即四周约 10%）。
       可用 `flutter_launcher_icons` 一次性生成（dev dependency）
-- [ ] **② 窗口默认位置** —— 现在固定开在**屏幕左下角**：`MainFlutterWindow.swift` 里
-      `NSRect(x: 0, y: 0, width: 1200, height: 800)`，Cocoa 坐标原点在左下，
-      而 XIB 里本来就是居中的 800×600（`x=335 y=390`），被这行覆盖掉了。
-      修法二选一：`self.center()`；或加 `setFrameAutosaveName` 记住上次的位置与大小
-      （更符合 macOS 习惯，但要处理「第一次打开」的默认值）
-- [ ] **③ 红绿灯（traffic lights）适配** —— 现在是系统标准标题栏 + Flutter 自绘
-      AppBar，上下两条栏，而且窗口标题和 AppBar 标题都是「RSS Reader」，重复。
-      目标：`titlebarAppearsTransparent` + `titleVisibility = .hidden` +
-      `.fullSizeContentView`，内容顶到窗口顶部、红绿灯浮在侧栏上（像 Mail / Notes）。
-      注意：① 顶栏左侧要给红绿灯留出空间（约 70px），否则「订阅源」表头会被压住；
-      ② 透明标题栏后要确认还能拖窗口（可能得设 `isMovableByWindowBackground`）；
-      ③ 标题只保留一处（建议去掉系统标题栏那份）
+- [x] **② 窗口默认位置 / ③ 红绿灯适配 / ④ 正文图片居中**（2026-09-30 完成）——
+      ② 优先恢复上次位置，第一次打开居中；③ 标题栏透明 + `.fullSizeContentView`，
+      红绿灯浮在 Flutter 顶栏上，整条顶栏都能拖动（`MacWindowDragArea` + method channel）；
+      ④ 只有图片的容器加 `text-align: center`。细节与实测记录见里程碑 F
 
 **其余**
 
@@ -105,13 +97,6 @@
 
 ## 功能
 
-- [ ] **④ 正文图片默认居中**（2026-09-30 新增；不只 macOS，各平台同一份规则）——
-      现在 `stylesForElement` 里没有 `img` 分支，引擎按默认左对齐。
-      在 `lib/ui/components/html_content_view.dart` 里加规则即可，候选做法
-      （需实测哪种在 fwfh 下生效）：给 `img` 返回 `{'text-align': 'center'}`，
-      或 `display: block` + `margin-left/right: auto`。
-      验证：`test/html_content_view_test.dart` 补一条 CSS 映射断言；
-      `tool/e2e_fixture/article1.html` 里有两张图，跑 e2e 可直接看效果
 - [ ] 国际化：设置页与错误提示是英文（`Theme` / `Backup Now` / `Restore successful!`），
       侧栏与其余页面中文，日期也无本地化
 - [ ] 订阅源分组
@@ -135,6 +120,46 @@
 ---
 
 ## 已完成的里程碑
+
+<details>
+<summary><b>F. macOS 桌面打磨：窗口位置 / 红绿灯 / 图片居中</b>（2026-09-30）</summary>
+
+**② 窗口默认位置**
+
+`MainFlutterWindow.swift` 原来写死 `NSRect(x: 0, y: 0, ...)`，而 Cocoa 坐标原点在
+左下角，所以窗口总是开在屏幕左下角。现在用 `setFrameUsingName` +
+`setFrameAutosaveName` 恢复上次的位置与大小，第一次打开（没有存档）时 `center()`。
+实测：清掉存档后首次打开落在 (156, 71)、1200×800，正好是主屏居中。
+
+**③ 红绿灯（traffic lights）适配**
+
+- `titlebarAppearsTransparent = true` + `titleVisibility = .hidden` +
+  `.fullSizeContentView`：不再有系统标题栏 + 应用顶栏两层，Flutter 顶栏顶到
+  窗口最上方，红绿灯浮在它上面（像 Mail / Notes）
+- Flutter 侧把标题栏高度注入 `MediaQuery.padding.top`（`lib/utils/macos_window.dart`
+  + `main.dart` 的 `builder`）：AppBar 自己会加高并把标题、按钮下移，
+  不用逐页写 padding；窄屏（返回按钮在左侧）也不会撞到红绿灯 —— 截图验证过
+- 拖动：`isMovableByWindowBackground` 实测**不管用**（Flutter 视图拦掉事件，
+  引擎里也没有相关支持）。改成在 AppBar 的 `flexibleSpace` 挂一层
+  `MacWindowDragArea`，经 method channel 调 `performDrag(with:)`。
+  实测：拖顶栏窗口跟随位移移动；拖侧栏 tile / 空白处窗口不动
+- 按钮不受影响：集成测试用例 7 点主题按钮与设置入口均正常（拖拽层不吞点击）
+
+**④ 正文图片居中**
+
+先看真实源再定规则：少数派 21 个 `figure` 里 20 个是「容器里只有一张图」，
+coolshell 用 `<p><img></p>` —— 都是「容器里只有图片」。规则就取这个形状：
+只给这种容器加 `text-align: center`（图片是行内元素，`text-align` 只有落在
+容器上才生效），夹在文字里的图片保持行内。实现是
+`lib/utils/html_content.dart` 的 `isImageOnlyContainer`（6 个单测）+
+`stylesForElement` 里合并样式；另有 2 个 widget 测试直接量图片中心点，
+确认真的居中。fixture 的 `article1.html` 顺手改成真实源的形状（图片包进 `<p>`）。
+
+**验证**：`flutter analyze` 0 issues；`flutter test` 101 个通过；
+`./tool/run_macos_e2e.sh` **7/7**（新增用例 7 与图片居中断言）；
+release 构建 + 安装 + 截图人工确认窗口观感。
+
+</details>
 
 <details>
 <summary><b>E. 清尾：死代码 / 渲染失败降级 / async-gap 警告 / 批量下载</b>（2026-09-30）</summary>

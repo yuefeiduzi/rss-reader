@@ -274,6 +274,13 @@ fixture 请求日志里可验证的反向证据：`placeholder.png` 与 `article
 （前者 = `data-src` 回写回归点，后者 = 摘要够长不该抓全文）。这两条已固化进
 `tool/run_macos_e2e.sh`。
 
+**窗口与排版（2026-09-30）**：标题栏透明 + 内容满窗口，红绿灯浮在 Flutter 顶栏上
+（`MainFlutterWindow.swift`），顶栏整条可拖动 —— `isMovableByWindowBackground`
+实测对 Flutter 视图无效，靠 `MacWindowDragArea` + method channel 调
+`performDrag(with:)`。窗口位置恢复上次、首次打开居中。正文图片默认居中：
+只有图片的容器（`<p><img></p>`、`<figure><img></figure>`）加 `text-align: center`，
+判定在 `lib/utils/html_content.dart` 的 `isImageOnlyContainer`。
+
 注意 Web 端的 e2e 走的是 `tool/e2e_fixture/` 那套 CORS 代理，跟真实 macOS 环境不是一回事；
 macOS 集成测试跑的是真 app + 真网络，fixture 只是为了让内容可断言。
 

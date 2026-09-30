@@ -27,10 +27,9 @@ Web 保留为 UI 演示。iOS 是**有意排后面**，不是放弃 —— 详�
 
 **下一步优先级**（完整清单在 [`TODO.md`](TODO.md)）：
 
-1. **把 macOS 打磨到真正可用** —— 构建与链路都通了，接下来是桌面体验：
-   应用图标、窗口默认位置（现在开在屏幕左下角）、红绿灯适配、正文图片居中、
-   窗口 `minSize`、系统菜单栏、需翻墙源的代理设置，
-   以及把原生对话框那几项人工点一遍（见「测试」）
+1. **把 macOS 打磨到真正可用** —— 桌面打磨已完成窗口位置、红绿灯、正文图片居中
+   （见 TODO 里程碑 F），剩下：应用图标、窗口 `minSize`、系统菜单栏、
+   需翻墙源的代理设置，以及把原生对话框那几项人工点一遍（见「测试」）
 2. 补 Android SDK（缺 cmdline-tools + license），打通第二个平台
 3. 存储层改造 —— 现在每次落盘都重新序列化全部文章，Web 的 localStorage 有 ~5MB 上限
 4. 清 `analysis_options.yaml` 的 `deprecated_member_use: ignore`（`surfaceVariant` ×4、
@@ -248,7 +247,8 @@ lib/
 │   ├── opml.dart             # OPML 解析/生成 + XML 实体转义
 │   ├── date_format.dart      # formatDate / formatDateTime / formatRelativeDate
 │   ├── download_names.dart   # 批量下载图片的文件名推导与去重
-│   └── html_content.dart     # extractImageUrls / absolutizeImageUrls
+│   ├── html_content.dart     # extractImageUrls / absolutizeImageUrls / isImageOnlyContainer
+│   └── macos_window.dart     # macOS 标题栏高度 + isMacOSDesktop
 └── ui/
     ├── screens/              # home / article_list / article_detail / settings / features
     └── components/
@@ -258,6 +258,7 @@ lib/
         ├── article_card.dart       # 文章卡片
         ├── html_content_view.dart  # 正文 HTML 渲染 + 失败降级视图
         ├── image_gallery.dart      # 全屏图片画廊
+        ├── window_drag_area.dart   # macOS 顶栏拖动把手（method channel）
         └── add_feed_dialog.dart / edit_feed_dialog.dart / responsive_layout.dart
 
 tool/
