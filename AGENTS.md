@@ -6,39 +6,65 @@
 
 `rss_reader` —— Flutter 编写的跨平台 RSS/Atom 阅读器。数据全部本地存储（SharedPreferences），无后端、无账号、无同步。
 
-## 当前状态（2026-09-16）
+## 当前状态（2026-09-29）
 
-项目停更了 7 个月后被重新拉起，已完成四轮工作：
+项目停更了 7 个月后被重新拉起，已完成五轮工作：
 
 1. 从零装好 Flutter 3.47.4（原来机器上没装），核实并修掉 16 个缺陷，建立测试地基
 2. 文档校对：删除 `CLAUDE.md`，改写为 `AGENTS.md`；修正了旧文档大量声称但未实现的功能
 3. 渲染引擎从停更的 `flutter_html` 迁到 `flutter_widget_from_html_core`
 4. 拆解上帝组件 + `StorageService` 改为 `ChangeNotifier`（详见 `TODO.md` 的里程碑）
+5. macOS 桌面端打通：补齐 Xcode 27 + CocoaPods，`flutter build macos` 通过，
+   并实测抓到了真实 RSS 源（这正是 Web 端做不到的事）
 
-当前：`flutter analyze` 0 error，`flutter test` 70 个测试通过，Web 端 e2e 已验证。
+当前：`flutter analyze` 0 error，`flutter test` 70 个测试通过，
+macOS 端可构建可运行且能抓真实订阅源，Web 端 e2e 已验证。
+
+**平台优先级（已定）**：**macOS → Android → iOS**。
+Web 保留为 UI 演示。iOS 是**有意排后面**，不是放弃 —— 详见下方平台现状。
 
 **下一步优先级**（完整清单在 [`TODO.md`](TODO.md)）：
 
-1. 补 Xcode —— 没有它就没有桌面/移动端，而 Web 端因为 CORS 抓不到真实 RSS，
-   相当于只能当 UI 演示
-2. 存储层改造 —— 现在每次落盘都重新序列化全部文章，Web 的 localStorage 有 ~5MB 上限
-3. 清理剩余死代码与无引用依赖（清单在 `docs/known-issues.md` 2.4）
+1. **把 macOS 打磨到真正可用** —— 构建已经通了，接下来是第一次当真桌面应用用
+2. 补 Android SDK，打通第二个平台
+3. 存储层改造 —— 现在每次落盘都重新序列化全部文章，Web 的 localStorage 有 ~5MB 上限
+4. 清理剩余死代码与无引用依赖（清单在 `docs/known-issues.md` 2.4）
 
 已核实但未修的问题都在 [`docs/known-issues.md`](docs/known-issues.md)，每条附证据。
 **动手前先看它**，避免重复踩已踩过的坑。
 
 ## 平台现状（重要，别被 "跨平台" 误导）
 
-代码有 Android / iOS / macOS / Windows / Linux / Web 六个目录，但**当前开发机只有 Web 能跑**：
+代码有 Android / iOS / macOS / Windows / Linux / Web 六个目录，
+**当前开发机上只有 macOS 和 Web 能跑**：
 
-| 目标 | 状态 | 阻塞原因 |
-|---|---|---|
-| **Web** | ✅ 可编译可运行 | **但抓不到订阅源** —— 见下方 CORS 陷阱 |
-| macOS / iOS | ❌ | 未安装完整 Xcode（只有 CommandLineTools） |
-| Android | ❌ | 未安装 Android SDK |
-| Windows / Linux | — | 需在对应系统上构建 |
+| 目标 | 优先级 | 状态 | 阻塞原因 |
+|---|---|---|---|
+| **macOS** | 1️⃣ | ✅ 可编译可运行，**能抓真实 RSS** | 无。唯一「能正经用」的目标 |
+| **Android** | 2️⃣ | ❌ | 未安装 Android SDK（`flutter doctor`：Unable to locate Android SDK） |
+| **iOS** | 3️⃣ | ⏸ 有意搁置 | ① `xcode-select` 未切到 Xcode ② 无 Development Team。见下方专节 |
+| Web | — | ✅ 可编译可运行 | **抓不到订阅源** —— 见陷阱 1。保留作 UI 演示 |
+| Windows / Linux | — | — | 需在对应系统上构建 |
 
-要正经开发桌面/移动端，先装 Xcode。`flutter doctor` 会告诉你缺什么。
+想正经用这个 App，**跑 macOS 端**：`flutter run -d macos`。
+
+### iOS 为什么还不能编（已定位，暂不修）
+
+2026-09-29 实测，两层阻塞都已确认到根因：
+
+1. **`xcode-select -p` 仍指向 `/Library/Developer/CommandLineTools`**，而 CLT
+   有 macOS SDK、没有 iPhoneOS SDK。修法是 `sudo xcode-select --switch`，见陷阱 6。
+   （macOS 端不受影响，所以这个问题会伪装成「iOS 独有」）
+2. iOS 真机部署还**需要一个 Development Team**（Apple ID），得在 Xcode 的
+   Signing & Capabilities 里选，非命令行可代劳。
+
+已经修掉的部分：`ios/Podfile` 补了 `use_modular_headers!`，否则
+`file_picker → DKPhotoGallery → SDWebImage` 会让 `pod install` 直接失败。
+`pod install` 之后 Xcode 本身编得过去（实测 16.6s）。
+
+注意 **Xcode 27 / Flutter 3.47 已为 `ios/` 与 `macos/` 工程自动迁移**
+（UIScene、SPM 集成、macOS deployment target 10.15 → 12.0），
+改动是构建时自动写进仓库的，不是手写的。
 
 ## 环境
 
@@ -55,20 +81,69 @@ export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"  # 引擎产物�
 
 当前版本：**Flutter 3.47.4 / Dart 3.13.3**。项目是从 2026-01 的版本（约 Dart 3.6）跳过来的，跨了多个大版本。
 
+### Xcode / CocoaPods（macOS 端已装好，2026-09-29）
+
+| 组件 | 版本 | 位置 |
+|---|---|---|
+| Xcode | 27.0（27A266a） | `/Applications/Xcode.app` |
+| CocoaPods | 1.17.0 | `/opt/homebrew/bin/pod`（brew 装的） |
+
+装 CocoaPods 有个坑：**USTC 镜像没有 macOS 27 的 bottle**（报 `no bottle available`）。
+得临时换回官方源并挂代理：
+
+```bash
+http_proxy=http://127.0.0.1:7897 https_proxy=http://127.0.0.1:7897 \
+HOMEBREW_BOTTLE_DOMAIN=https://ghcr.io/v2/homebrew/core \
+HOMEBREW_API_DOMAIN=https://formulae.brew.sh/api \
+brew install cocoapods
+```
+
+**`xcode-select` 目前仍指向 CommandLineTools** —— macOS 构建无视它，iOS 构建会死，
+详见陷阱 6。
+
+### 包名与数据位置
+
+bundle id / applicationId 全部是 **`org.ross.rssReader`**（2026-09-29 从模板默认的
+`com.example.*` 改过来）。macOS 是沙盒应用，**数据按 bundle id 分目录**：
+
+```
+~/Library/Containers/org.ross.rssReader/Data/Library/Preferences/org.ross.rssReader.plist
+```
+
+里面是 SharedPreferences 的三个 key：`flutter.feeds` / `flutter.articles` /
+`flutter.config`（值是 plist array，每个元素是一段 JSON 字符串）。
+调试时想直接看数据：
+
+```bash
+python3 -c "import plistlib,json,sys; d=plistlib.load(open(sys.argv[1],'rb')); \
+print([json.loads(x)['title'] for x in d['flutter.feeds']])" \
+~/Library/Containers/org.ross.rssReader/Data/Library/Preferences/org.ross.rssReader.plist
+```
+
+> 别用 `plutil -extract flutter.feeds`，它会把 key 里的 `.` 当路径分隔符。
+
+**再改包名会丢数据** —— 新容器是空的，要手动迁移（旧容器在
+`~/Library/Containers/<旧 bundle id>/`，拷过去并把 plist 重命名，然后
+`killall cfprefsd` 清缓存）。
+
 ## 常用命令
 
 ```bash
 flutter pub get                 # 拉依赖
 flutter analyze                 # 静态分析（必须 0 error）
 flutter test                    # 单元测试
+flutter run -d macos            # 开发模式跑 macOS（首选目标）
+flutter build macos --release   # 构建 macOS
 flutter build web --release     # 构建 Web
 flutter run -d chrome           # 开发模式跑 Web
 ```
 
+macOS 端不需要任何环境变量前缀。若 `xcodebuild` 报找不到 SDK，先看陷阱 6。
+
 ### 端到端验证
 
-Web 端受 CORS 限制抓不到真实 RSS 源，所以仓库里带了一套本地 fixture
-（`tool/e2e_fixture/`）。需求涉及“真实数据跑通”时用它，不要拿真实站点试：
+**macOS 端直接上真实源**，不需要 fixture —— 没有 CORS 问题（见陷阱 1）。
+**Web 端**才需要本地 fixture：它受 CORS 限制抓不到真实 RSS 源。
 
 ```bash
 flutter build web --release
@@ -149,11 +224,23 @@ tool/
 
 ## 陷阱（会真的绊住你）
 
-### 1. Web 端天然抓不到 RSS（CORS）
+### 1. Web 端天然抓不到 RSS（CORS）—— 仅限 Web
 
 `RssService` 设了自定义 `User-Agent`，使请求成为非简单请求，触发 CORS 预检；而真实 RSS 服务器不会响应预检，浏览器直接拦截。**这是架构问题，不是 bug，改代码解决不了**，需要 CORS 代理层。
 
 实测：本地起一个带 `Access-Control-Allow-Origin: *` 的 fixture 服务器可以走通全流程，真实站点不行。
+
+**这条只影响 Web。** macOS / Android / iOS 上 dio 不受同源策略约束，macOS 沙盒
+的 `com.apple.security.network.client` 也已在 entitlements 里放行
+（`codesign -d --entitlements -` 实测为 `true`）。2026-09-29 实抓真实源：
+
+| 源 | 格式 | 结果 |
+|---|---|---|
+| `https://sspai.com/feed` | RSS | 10 篇，标题/日期/链接均正确 |
+| `https://www.ruanyifeng.com/blog/atom.xml` | Atom | 3 篇 |
+| `https://coolshell.cn/feed` | RSS | 15 篇 |
+
+所以 macOS 端**不需要** `tool/e2e_fixture/` 这套 CORS 代理。
 
 ### 2. `pubspec.yaml` 里的 `dependency_overrides` 是必需的
 
@@ -200,6 +287,51 @@ dependency_overrides:
 | `StorageService` | id 用完整 URL（不是 `hashCode`）—— 它会被持久化，哈希实现变了历史数据就对不上 |
 | 网络层 | 只放行 2xx。写 `status < 500` 会让 404 错误页被当成正文渲染并缓存 |
 
+### 6. `xcode-select` 指向 CommandLineTools —— macOS 没事，iOS 必挂
+
+**装了 `Xcode.app` 不等于可用。** 只要 `xcode-select -p` 还打印
+`/Library/Developer/CommandLineTools`，就会这样：
+
+```bash
+xcrun --show-sdk-path --sdk iphoneos   # → error: SDK "iphoneos" cannot be located
+xcrun --show-sdk-path --sdk macosx     # → OK（CLT 自带 macOS SDK）
+```
+
+于是 **macOS 编得过、iOS 编不过**，而且报错完全指不到病根：
+`objective_c` 的 native-assets 构建钩子只会抛 `Bad state: No element`
+（`objective_c-9.6.0/hook/build.dart:189` → `xcrun` 返回空 stdout）。
+
+修法（**必须 sudo**）：
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -runFirstLaunch
+```
+
+别指望用 `DEVELOPER_DIR` 环境变量绕过 —— Xcode 的脚本阶段虽然导出了它，
+但 flutter_tools 起 hook 进程时不会透传，hook 里的 `xcrun` 照样用全局 developer dir。
+（已实测：手动给 hook 进程加 `DEVELOPER_DIR` 后它立刻编出
+`-isysroot .../iPhoneOS27.0.sdk -target arm64-apple-ios`，所以这是唯一变量。）
+
+`flutter doctor` 里那句「Xcode installation is incomplete」说的就是这件事。
+
+### 7. 这台机器的网络：包走镜像，GitHub 走代理，且关掉 HTTP/2
+
+- pub / storage / brew 都配了国内镜像（见「环境」），**别给它们套代理**
+- 但 `raw.githubusercontent.com` / `github.com` 直连超时 —— brew 取 formula、
+  CocoaPods 克隆 pod 全卡在这里，必须挂代理
+- 代理跑 HTTP/2 不稳：`git clone` 会报 `LibreSSL SSL_connect: SSL_ERROR_SYSCALL`，
+  加 `-c http.version=HTTP/1.1` 就正常
+
+```bash
+export http_proxy=http://127.0.0.1:7897 https_proxy=http://127.0.0.1:7897
+export no_proxy=127.0.0.1,localhost
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.version GIT_CONFIG_VALUE_0=HTTP/1.1
+```
+
+**另注**：`dio` 走 dart:io 默认直连，**不读系统代理**。所以 App 本身抓不到需要
+翻墙的源（实测 `feeds.bbci.co.uk` 超时，`sspai.com` 正常）。这不是 bug，是已知限制。
+
 ## 测试
 
 ```bash
@@ -211,8 +343,10 @@ flutter test test/opml_test.dart                # 单个文件
 自动更新」这个核心行为，不再只是断言标题。
 
 **单测盖不住的部分要走 e2e**：解析、图片地址、时间显示都有单测，但「真的渲染出来了」
-只能靠 `tool/e2e_fixture/` 跑一遍。历史上多个缺陷（相对图片 404、404 错误页被当成正文）
-都是 e2e 才看到的。
+只能靠跑一遍看。历史上多个缺陷（相对图片 404、404 错误页被当成正文）都是 e2e 才看到的。
+
+- **macOS 端**：直接添加真实订阅源，没有 CORS 干扰
+- **Web 端**：走 `tool/e2e_fixture/`（每个 fixture 文件都对应一个已修过的缺陷）
 
 ## 文档
 

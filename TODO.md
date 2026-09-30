@@ -2,10 +2,11 @@
 
 详细的已核实问题与技术债见 [docs/known-issues.md](docs/known-issues.md)。本文件只放**路线图**。
 
-最后核对：2026-09-16（逐条对照源码、`flutter analyze`、`flutter test`、`flutter doctor`；
-已不成立的旧条目记在文末的「本轮核对」里，别再照着做）
+最后核对：2026-09-29（逐条对照源码、`flutter analyze`、`flutter test`、`flutter doctor`、
+macOS 真实构建与真实 RSS 抓取；已不成立的旧条目记在文末的「本轮核对」里，别再照着做）
 
-当前基线：`flutter analyze` 4 条 info（都是下方记的存量），`flutter test` 70 个通过。
+当前基线：`flutter analyze` 4 条 info（都是下方记的存量），`flutter test` 70 个通过，
+macOS debug/release 均可构建。
 
 ---
 
@@ -25,13 +26,47 @@
       `_downloadAllImages` 当死代码删了，现在只有画廊里的单张下载。
       要做的话需要串行任务 + 只弹一次保存框
 
-## 需要先解决前置条件
+## 平台路线（优先级已定：macOS → Android → iOS）
 
-- [ ] **补 Xcode**，让 macOS 桌面端可构建 —— Web 端因 CORS 抓不到 RSS，
-      桌面/移动端才是这个 App 的真实使用场景。
-      `flutter doctor`：Xcode 安装不完整，**且 CocoaPods 未安装**（插件依赖它，两样都要）
-- [ ] 补 Android SDK，验证 Android 构建（`flutter doctor`：Unable to locate Android SDK）
+这三个的顺序是明确的，别打乱。Web 保留为 UI 演示。
+
+- [x] **macOS 可构建**（2026-09-29）：Xcode 27（27A266a）+ CocoaPods 1.17.0 装齐；
+      `flutter build macos --debug/--release` 通过；app 能启动；
+      实测抓到真实 RSS/Atom 源（少数派 / 阮一峰 / CoolShell）
+- [ ] **把 macOS 打磨到真正可用** —— 见下方「macOS」
+- [ ] **Android**：补 Android SDK，验证构建
+      （`flutter doctor`：Unable to locate Android SDK）
+- [ ] **iOS**（有意排最后）：需要两步前置 ——
+      ① `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
+      （见 [AGENTS.md 陷阱 6](AGENTS.md)，macOS 端不受影响所以会伪装成 iOS 独有）
+      ② 在 Xcode 里选一个 Development Team。
+      `ios/Podfile` 的 `use_modular_headers!` 已补好，`pod install` 已能跑通
 - [ ] 为 Web 端引入 CORS 代理层（否则 Web 只能作为 UI 演示）
+
+## macOS
+
+构建已经不是问题了，但**这个 App 从来没有在 macOS 上跑过完整功能链路** ——
+之前所有验证都在 Web 上做的，而 Web 走的是 `tool/e2e_fixture/` 那套 CORS 代理。
+所以下面第一件事是「跑一遍」，之后的条目应该根据跑出来的结果修正。
+
+- [ ] **macOS 端完整链路 e2e**（第一优先）：添加源 → 列表 → 详情 →
+      全文抓取 → 收藏 → 已读 → 删除 → OPML 导入导出 → 备份/恢复 →
+      图片下载 → 分享 → 外部链接。逐项记录，**没跑过的不算通过**
+- [x] bundle id 已从模板默认的 `com.example.rssReader` 改为 **`org.ross.rssReader`**
+      （2026-09-29，六个平台全部改完，macOS 构建已验）
+      ⚠️ **Android 的 `applicationId` 一般用小写**，`rssReader` 里的大写 R 语法合法
+      但不符合惯例；Android SDK 装好后先拿 `flutter build apk` 验一下
+- [ ] 应用图标仍是 Flutter 默认图标
+- [ ] `MainFlutterWindow.swift` 设了默认 1200×800，但没设 `minSize`，
+      窗口可以拖到很小，窄屏布局可能崩
+- [ ] **抓不到需要翻墙的源**：`dio` 走 dart:io 默认直连，不读系统代理。
+      实测 `feeds.bbci.co.uk` 超时、国内源正常。要不要加代理设置项待定
+- [ ] macOS 系统菜单栏（App / Edit / Window 的惯例项）未检查过
+- [ ] **HDR 图片**：引擎级限制，app 代码解决不了 —— 详见
+      [known-issues 2.7](docs/known-issues.md)。P3 宽色域已自动生效，真 HDR 需等
+      [flutter#127520](https://github.com/flutter/flutter/issues/127520)
+- [ ] 待验证：`share_plus` / `file_picker` 在 macOS 上的真实行为
+      （两者都不支持 SPM，走的是 CocoaPods 回退路径）
 
 ## 架构改进
 

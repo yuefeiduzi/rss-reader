@@ -4,24 +4,38 @@ Flutter 编写的跨平台 RSS/Atom 阅读器。数据全部保存在本地（Sh
 
 ## 平台支持现状
 
-代码包含 Android / iOS / macOS / Windows / Linux / Web 六个平台的工程目录，但**当前只有 Web 是真正可运行的**：
+代码包含 Android / iOS / macOS / Windows / Linux / Web 六个平台的工程目录。
+**开发优先级：macOS → Android → iOS**，Web 保留为 UI 演示。
 
 | 平台 | 状态 | 说明 |
 |---|---|---|
+| **macOS** | ✅ 可运行，**能抓真实订阅源** | 当前唯一「能正经用」的目标，已实测抓到真实 RSS/Atom |
 | Web | ⚠️ 可运行，但功能受限 | **无法抓取真实订阅源**，见下方「已知限制」 |
-| macOS / iOS | ❌ 未验证 | 需要完整安装 Xcode |
 | Android | ❌ 未验证 | 需要 Android SDK |
+| iOS | ⏸ 暂缓 | 有意排在 macOS / Android 之后：需先修 `xcode-select` 并选 Development Team |
 | Windows / Linux | ❌ 未验证 | 需在对应系统上构建 |
 
-> 如果你要真正把这个 App 用起来，优先补 Xcode 跑 macOS 桌面端：Web 端受浏览器同源策略限制，抓不到 RSS。
+> 想真正用起来，跑 macOS 桌面端：Web 端受浏览器同源策略限制，抓不到 RSS。
+> Xcode / CocoaPods 的安装坑记在 [AGENTS.md](AGENTS.md)。
+
+**注意**：macOS 上「能编译、能抓源」已验证，但完整交互链路尚未跑过，
+详见 [docs/known-issues.md](docs/known-issues.md) 2.5.4。
 
 ## 已知限制
 
-### Web 端抓不到订阅源（架构限制）
+### Web 端抓不到订阅源（架构限制，仅限 Web）
 
 `RssService` 会设置自定义 `User-Agent`，使请求成为「非简单请求」，浏览器因此发起 CORS 预检；而真实世界的 RSS 服务器不会响应预检，请求被浏览器直接拦截。
 
 这不是可以靠改代码绕过的 bug，需要引入 CORS 代理层。本地起一个带 `Access-Control-Allow-Origin` 的测试服务器可以走通全流程，说明解析链路本身是好的。
+
+**macOS / Android / iOS 没有这个问题** —— dio 在原生端不受同源策略约束，
+macOS 沙盒的 `com.apple.security.network.client` 也已在 entitlements 里放行。
+实测 macOS 上可直接抓：`sspai.com/feed`、`ruanyifeng.com/blog/atom.xml`、
+`coolshell.cn/feed`。
+
+> 已知限制：`dio` 用 dart:io 默认直连，**不读系统代理**，所以 App 抓不到需要
+> 翻墙的源（实测 `feeds.bbci.co.uk` 超时），国内源正常。
 
 ### Web 端备份功能不可用
 
@@ -48,14 +62,15 @@ export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
 
 ```bash
 flutter pub get
-flutter run -d chrome          # 开发模式
+flutter run -d macos           # 开发模式（推荐）
+flutter run -d chrome          # 开发模式（Web）
 ```
 
 ### 构建
 
 ```bash
+flutter build macos --release  # 产物在 build/macos/Build/Products/Release/
 flutter build web --release    # 产物在 build/web/
-flutter build macos --release  # 需要 Xcode
 flutter build apk --release    # 需要 Android SDK
 ```
 
@@ -66,7 +81,8 @@ flutter analyze                # 应为 0 error
 flutter test                   # 单元测试
 ```
 
-端到端验证（Web 端受 CORS 限制抓不到真实 RSS，所以仓库里带了一套本地 fixture）：
+端到端验证：**macOS 端直接添加真实源**（无 CORS 问题）；Web 端受 CORS 限制，
+需要用仓库自带的本地 fixture：
 
 ```bash
 flutter build web --release
@@ -112,9 +128,8 @@ tool/
 | HTML 解析 | `html`（正文抓取）+ `flutter_widget_from_html_core`（渲染） |
 | 本地存储 | `shared_preferences` |
 
-> `pubspec.yaml` 里剩下的 `dependency_overrides`（`objective_c`）是**必需的**，用于绕开上游依赖断裂。改动前请先读 [AGENTS.md](AGENTS.md)。
-
-> `pubspec.yaml` 里的 `dependency_overrides` 是**必需的**，用于绕开两处上游依赖断裂。改动前请先读 [AGENTS.md](AGENTS.md)。
+> `pubspec.yaml` 里的 `dependency_overrides`（`objective_c`）是**必需的**，
+> 用于绕开上游依赖断裂。改动前请先读 [AGENTS.md](AGENTS.md)。
 
 ## 文档
 

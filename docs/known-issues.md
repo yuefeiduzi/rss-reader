@@ -2,7 +2,7 @@
 
 本文件记录**经过源码核实或实测验证**的问题，每条都附证据。避免记录「听说有问题」这类未验证内容。
 
-最后核对：2026-09-16
+最后核对：2026-09-29
 
 ---
 
@@ -90,6 +90,38 @@ csslib / html / logging），`html` 的版本锁定随之移除。实测渲染�
 - `article_detail_screen.dart`：`_hasError` 降级分支（只读不写，永不触发）
 - `pubspec.yaml`：`cached_network_image`（正文用 `NetworkImage`，列表用 `Image.network`）
 
+**已删除：五个纯持久化、无人读写的配置字段**（2026-09-29 核实并删除）
+
+`AppConfig` 曾经有七个字段，其中这五个全项目没有任何地方读或写：
+
+| 字段 | 曾经的默认值 |
+|---|---|
+| `refreshInterval` | 60 |
+| `autoRefreshOnStart` | `true` |
+| `maxCachedArticles` | 500 |
+| `enableNotifications` | `false` |
+| `lastSyncTime` | 永远 `null`（没有任何地方赋值） |
+
+验证：`grep -rn "autoRefreshOnStart\|lastSyncTime\|refreshInterval\|maxCachedArticles\|enableNotifications" lib/ test/`
+只命中 `lib/models/config.dart` 自己的声明与 JSON 序列化。设置页也没有对应 UI。
+
+也就是说 **“启动时自动刷新”“定时刷新”“缓存上限”“通知”全是不存在的功能**，
+尽管配置文件里写着 `autoRefreshOnStart: true`。`FEATURES.md` 没有声称过它们（这点还好）。
+
+现仅保留真正在用的 `isDarkMode` + `followSystemTheme`（由 `theme_service.setThemeMode`
+通过 `copyWith` 写入）。旧数据与旧备份里残留的这些 key 会被 `fromJson` 直接忽略，无需迁移。
+
+**向后兼容已实测**：本机 macOS 的数据文件里恰好带着全部 5 个旧 key
+（`{"isDarkMode":true,"followSystemTheme":false,"refreshInterval":60,
+"maxCachedArticles":500,"autoRefreshOnStart":true,"enableNotifications":false,
+"lastSyncTime":null}`），删字段后 app 直接加载无碍。
+`test/config_test.dart` 另有一组专门的兼容性单测（旧数据、只有旧字段、
+再序列化后旧 key 不回来）。
+
+> 教训：这五个字段的 `fromJson`/`toJson`/`copyWith` 写得都挺像回事，
+> 光看 `config.dart` 会以为功能是存在的。**要判断一个配置项有没有用，
+> 得拿字段名去全仓库 grep，不能只看模型文件。**
+
 ### 2.4.1 尝试过但已回退
 
 **用 `cached_network_image` 缓存正文图片** —— `cached_network_image` 本来就在
@@ -103,9 +135,128 @@ pubspec 里却从未被引用，因此尝试通过覆写 `WidgetFactory.imagePro
 
 | 问题 | 说明 |
 |---|---|
-| Web 无法抓取 RSS | CORS 预检架构限制，需要代理层。**不是可以改代码绕过的 bug** |
+| Web 无法抓取 RSS | CORS 预检架构限制，需要代理层。**不是可以改代码绕过的 bug**。**仅限 Web**，macOS 实测不受影响 |
 | Web 备份不可用 | `dart:io` + `path_provider` 在 Web 抛 `UnsupportedError` |
-| macOS / iOS / Android 未验证 | 缺少 Xcode 与 Android SDK |
+| Android 未验证 | 缺少 Android SDK |
+| iOS 未验证 | **有意排在 macOS / Android 之后**。阻塞与已修部分见 2.5.1 |
+| macOS 完整链路未验证 | 构建与真实 RSS 抓取已通过，但交互链路一次都没跑过（见 2.5.4） |
+| macOS 抓不到需翻墙的源 | `dio` 用 dart:io 默认直连，不读系统代理 |
+
+### 2.5.1 iOS 构建阻塞（已定位到根因，按优先级暂不修）
+
+平台优先级是 macOS → Android → iOS，iOS 排最后。但根因已查清，
+记在这里免得下次从头查一遍。
+
+**① `xcode-select` 未切到 Xcode —— 真阻塞。**
+
+```
+$ xcode-select -p
+/Library/Developer/CommandLineTools
+
+$ xcrun --show-sdk-path --sdk iphoneos
+xcrun: error: SDK "iphoneos" cannot be located
+
+$ xcrun --show-sdk-path --sdk macosx
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk     # ← CLT 有 macOS SDK
+```
+
+CLT 有 macOS SDK、没有 iPhoneOS SDK。这就是 **macOS 一路顺风、iOS 必挂**的原因。
+
+在 iOS 构建里它伪装成一个跟 SDK 毫无字面关系的错误：
+
+```
+Target build_hooks failed: Error: Building native assets failed.
+Unhandled exception:
+Bad state: No element
+#1  firstLineOfStdout (objective_c-9.6.0/hook/build.dart:198:8)
+#2  sdkPath            (objective_c-9.6.0/hook/build.dart:189:10)
+```
+
+`hook/build.dart:189` 就是 `xcrun --show-sdk-path --sdk iphoneos`；它返回空 stdout，
+于是 `.first` 抛 `Bad state: No element`。报错信息里没有任何“SDK”“Xcode”字样。
+
+**已实测**：手动给那个 hook 进程加 `DEVELOPER_DIR` 后立刻成功：
+
+```
+clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/\
+iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk -target arm64-apple-ios \
+-mios-version-min=15 -c .../objective_c-9.6.0/src/objective_c.c
+```
+
+对比跑（同一个 `hook.dill` + `input.json`）：无 `DEVELOPER_DIR` → `Bad state: No element`；
+有 → 编译成功。所以 `DEVELOPER_DIR` 是唯一变量。
+
+但它**救不了 `flutter build ios`** —— Xcode 的脚本阶段虽然导出了 `DEVELOPER_DIR`
+（日志里能看到 `export DEVELOPER_DIR=/Applications/Xcode.app/...`），
+flutter_tools 起 hook 子进程时不会透传。必须走 sudo：
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -runFirstLaunch
+```
+
+**② 无 Development Team。** 真机部署需要在 Xcode 里选 Team，命令行代劳不了。
+`flutter build ios --debug --no-codesign` 一直走到 `Xcode build done. 16.6s`
+才在这里失败。
+
+**已修掉的部分**：`ios/Podfile` 的 Runner target 里补了 `use_modular_headers!`。
+不加会这样失败（`pod install` 阶段，早于 Xcode）：
+
+```
+[!] The following Swift pods cannot yet be integrated as static libraries:
+The Swift pod `DKPhotoGallery` depends upon `SDWebImage`, which does not define modules.
+```
+
+依赖链路：`file_picker` → `DKImagePickerController` → `DKPhotoGallery` → `SDWebImage`。
+（`file_picker` 是真在用的：保存图片、选备份目录、导入文件，删不得。）
+
+### 2.5.2 环境陷阱（不是代码问题，但能耗半天）
+
+| 现象 | 根因 | 处理 |
+|---|---|---|
+| `brew install cocoapods` → `Error: cocoapods: no bottle available!` | USTC 镜像没有 macOS 27 的 bottle | 临时换官方源 + 代理：`HOMEBREW_BOTTLE_DOMAIN=https://ghcr.io/v2/homebrew/core HOMEBREW_API_DOMAIN=https://formulae.brew.sh/api` |
+| `pod install` 卡在 `Cloning into ...`，最终 `Recv failure: Operation timed out` | `github.com` 直连超时 | 挂 `https_proxy=http://127.0.0.1:7897` |
+| `git clone` → `LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443` | 本地代理跑 HTTP/2 不稳 | `git -c http.version=HTTP/1.1`（实测加上就通） |
+
+### 2.5.3 Flutter 3.47 会在构建时直接改写平台工程
+
+不是提示、不是警告，是**直接改仓库文件**。2026-09-29 一次构建之后的 diff：
+
+| 文件 | 变化 |
+|---|---|
+| `ios/Runner/AppDelegate.swift` | `FlutterAppDelegate` 加 `FlutterImplicitEngineDelegate`，插件注册移到 `didInitializeImplicitFlutterEngine` |
+| `ios/Runner/Info.plist` | 新增 `UIApplicationSceneManifest`（UIScene 迁移）、`CADisableMinimumFrameDurationOnPhone` |
+| `ios/Runner.xcodeproj` + `Runner.xcscheme` | 新增 `FlutterGeneratedPluginSwiftPackage` 与 PreActions |
+| `ios/Flutter/AppFrameworkInfo.plist` | 移除 `MinimumOSVersion` |
+| `macos/Runner.xcodeproj/project.pbxproj` | `MACOSX_DEPLOYMENT_TARGET` 10.15 → 12.0；新增 SPM 集成 |
+| `macos/Podfile` | `platform :osx, '10.15'` → `'12.0'` |
+| `pubspec.lock` | 98 个依赖重新解析（含 `vector_math 2.4.2 → 2.4.3`） |
+
+**给后人的提醒**：pull 下来发现平台目录有 diff、但没人碰过，先想想是不是构建产生的。
+
+### 2.5.4 macOS 现在的真实状态（2026-09-29 实测）
+
+| 事项 | 结果 |
+|---|---|
+| `flutter analyze` | 0 error，4 info |
+| `flutter test` | 70/70 通过 |
+| `flutter build macos --debug` | ✅ |
+| `flutter build macos --release` | ✅ 50.0MB |
+| app 启动 | ✅ 进程正常起 |
+| 界面渲染（截图实测） | ✅ 订阅源面板、未读数（10）、空状态提示均正常 |
+| 持久化数据读取 | ✅ 改包名后迁移的 1 个源 / 12 篇文章被正确加载并显示 |
+| 沙盒网络权限 | ✅ `network.client = true`（`codesign -d --entitlements -` 实测；Debug 与 Release 两份 entitlements 都已含） |
+| 真实 RSS 抓取 | ✅ sspai 10 篇 / coolshell 15 篇，标题、日期（已 `toLocal()`）、链接均正确 |
+| 真实 Atom 抓取 | ✅ ruanyifeng 3 篇 |
+| 需翻墙的源 | ❌ `feeds.bbci.co.uk` 超时（dio 不读系统代理，国内源正常） |
+| **完整交互链路** | **❌ 从未在 macOS 上跑过** |
+
+最后一条是重点：macOS 上「能编译、能抓源」已证明，但
+添加源 → 列表 → 详情 → 全文抓取 → 收藏 → 已读 → 删除 → OPML 导入导出 →
+备份/恢复 → 图片下载 → 分享 → 外部链接 这整条链路**一次都没验证过**。
+在跑完之前，不要写成「macOS 已支持」。
+
+注意 Web 端的 e2e 走的是 `tool/e2e_fixture/` 那套 CORS 代理，跟真实 macOS 环境不是一回事。
 
 ### 2.6 规范
 
@@ -113,13 +264,86 @@ pubspec 里却从未被引用，因此尝试通过覆写 `WidgetFactory.imagePro
 - `article_detail_screen.dart` 顶部 `// ignore_for_file: use_build_context_synchronously` 全局压制了正在发生的 async-gap 问题
 - `ResponsiveLayout` 只在首页使用，与「统一用它做宽屏适配」的约定不符
 
+### 2.7 HDR / 宽色域（2026-09-29 逐层核实）
+
+结论：**真 HDR（超出 SDR 白点的亮度）在 Flutter 上做不到，这是引擎级限制，
+app 代码解决不了。而宽色域 P3 已经自动生效，不需要改任何东西。**
+
+#### 已经生效的：宽色域 P3
+
+完整调用链（均在 `~/development/flutter/engine/src/flutter/`）：
+
+```
+FlutterEngine.mm:742              flutterArguments.enable_wide_gamut = enableWideGamut
+FlutterDartProject.mm:87          enableWideGamut = enableImpeller(YES) && MTLGPUFamilyApple3
+  ↓  settings.enable_wide_gamut
+image_decoder.cc:27               ImageDecoderImpeller(..., settings.enable_wide_gamut, ...)
+  ↓
+image_decoder_impeller.cc:714     wide_gamut_enabled && Capabilities()->SupportsExtendedRangeFormats()
+capabilities.cc / context_mtl.mm  SupportsExtendedRangeFormats = [device supportsFamily:MTLGPUFamilyApple3]
+```
+
+表面格式也已经是 10bit 扩展色域（`FlutterSurface.mm:62,117`）：
+
+```objc
+enableWideGamut ? MTLPixelFormatBGRA10_XR : MTLPixelFormatBGRA8Unorm;
+IOSurfaceSetValue(res, kIOSurfaceColorSpace, kCGColorSpaceExtendedSRGB);
+```
+
+当前机器：Apple Silicon（满足 `Apple3`）+ `Built-in Liquid Retina XDR Display`
+（`system_profiler` 实测），`canRepresentDisplayGamut:NSDisplayGamutP3` 成立。
+Info.plist 里没有任何开关 → 走默认，Impeller 开。
+
+**所以 P3 图片现在就是按宽色域渲染的，不需要做任何事。**
+
+#### 做不到的：EDR / 真 HDR
+
+1. `wantsExtendedDynamicRangeContent` 与 `CAEDRMetadata` 在整个
+   `shell/platform/darwin/` 里**零出现**（grep 实测，非推测）。
+2. 呈现走的是普通 `CALayer` + IOSurface（`FlutterSurfaceManager.mm` 的
+   `UpdateContentSubLayers` 里 `[CALayer layer]` + `layer.contents = surface`），
+   不是 `CAMetalLayer`。
+3. [flutter/flutter#127520](https://github.com/flutter/flutter/issues/127520)
+   （macOS EDR support）**至今 open**，无 milestone、无 assignee、无关联 PR。
+   维护者 knopp：*"There's more work needed to get HDR working on macOS than
+   just a property on CA(Metal)Layer"*。
+
+#### 两个缺口，只堵上一个也没用
+
+| 缺口 | 能不能在 app 里修 |
+|---|---|
+| ① layer 未 opt-in EDR | 理论可以：macOS 26+ 有 `CALayer.preferredDynamicRange`（`.high`），旧的 `wantsExtendedDynamicRangeContent` 已在 macOS 26 **obsolete**（本机是 27.0.1，只能用新的） |
+| ② 解码器不产出 > 1.0 的 HDR 内容 | **不能**。HEIC gain map / PQ / HLG 都会被 Skia 当 SDR 解，值不会超过 1.0 |
+
+即使堵上 ①，屏幕上也没有超过 1.0 的像素可显，所以**看不到任何变化**。
+
+#### 如果以后真要做
+
+唯一可行的路是**原生平台视图**：用 `FlutterPlatformView` 托管一个自己控制的
+NSView，在里面用 Apple 原生 API（能处理 gain map）渲染 HDR 图片。
+代价：仅 macOS、平台视图在 macOS 上本身有 z-order / 合成限制、且与正文混排困难。
+
+#### 验证方法（不需要改代码）
+
+```bash
+system_profiler SPDisplaysDataType | grep -i "Display Type"   # 看是不是 XDR
+# 确认引擎侧开关仍然是自动开启的（版本升级后重查）：
+grep -n "enableWideGamut" ~/development/flutter/engine/src/flutter/shell/platform/darwin/macos/framework/Source/FlutterDartProject.mm
+```
+
 ---
 
 ## 三、如何复现验证
 
-Web 端受 CORS 限制抓不到真实 RSS 源，因此仓库内带了本地 fixture：
-**`tool/e2e_fixture/`**（用法、每个文件回归什么、有哪些坑，都写在它自己的
-README 里）。
+**优先用 macOS 端验**：没有 CORS 问题，直接添加真实源即可（实测可用源见 2.5.4）。
+
+```bash
+flutter run -d macos
+# 添加 https://sspai.com/feed  或  https://www.ruanyifeng.com/blog/atom.xml
+```
+
+**Web 端**才需要本地 fixture（受 CORS 限制抓不到真实源），仓库内带了：
+**`tool/e2e_fixture/`**（用法、每个文件回归什么、有哪些坑，都写在它自己的 README 里）。
 
 ```bash
 flutter build web --release
