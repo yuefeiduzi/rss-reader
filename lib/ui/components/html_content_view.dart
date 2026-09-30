@@ -23,12 +23,19 @@ class HtmlContentView extends StatelessWidget {
   /// 点击图片（参数是图片地址）
   final void Function(String url)? onTapImage;
 
+  /// 整篇正文渲染失败（构建 DOM 树时抛异常）时回调。
+  ///
+  /// 单张图片加载失败**不会**触发它 —— 那种情况引擎自己会显示 alt 文本
+  /// 或 ❌，不该把整篇文章换成降级视图。
+  final VoidCallback? onRenderError;
+
   const HtmlContentView({
     super.key,
     required this.html,
     required this.link,
     this.onTapLink,
     this.onTapImage,
+    this.onRenderError,
   });
 
   @override
@@ -60,6 +67,18 @@ class HtmlContentView extends StatelessWidget {
               final source =
                   metadata.sources.isNotEmpty ? metadata.sources.first : null;
               if (source != null) onTapImage!(source.url);
+            },
+      onErrorBuilder: onRenderError == null
+          ? null
+          : (context, element, error) {
+              // 引擎区分两种失败：整篇构建失败传的是合成根元素（源码里是
+              // `dom.Element.tag('root')`），图片加载失败传的是 img 元素。
+              // 只对前者降级。
+              if (element.localName == 'root') {
+                onRenderError!();
+              }
+              // 返回 null → 仍由引擎自己的兜底显示（alt 文本 / ❌）
+              return null;
             },
     );
   }
@@ -132,4 +151,87 @@ String cssColor(Color color) {
         '${blue.toRadixString(16).padLeft(2, '0')}';
   }
   return 'rgba($red,$green,$blue,${(alpha / 255).toStringAsFixed(3)})';
+}
+
+/// 正文渲染失败时的降级视图：纯文本 + 提示 + 在浏览器打开原文。
+///
+/// 单独成一个组件（而不是内联在详情页里）是为了能直接测试 ——
+/// 引擎的失败回调在测试里不好复现。
+class HtmlRenderFallback extends StatelessWidget {
+  /// 渲染失败的那份原始 HTML
+  final String content;
+
+  final VoidCallback onOpenInBrowser;
+
+  const HtmlRenderFallback({
+    super.key,
+    required this.content,
+    required this.onOpenInBrowser,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 错误提示
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.errorContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: theme.colorScheme.onErrorContainer,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '内容渲染异常，已显示纯文本版本',
+                  style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 纯文本内容（支持选择复制）
+        SelectionArea(
+          child: Text(
+            _stripHtml(content),
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // 在浏览器中打开按钮
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: onOpenInBrowser,
+            icon: const Icon(Icons.open_in_browser),
+            label: const Text('在浏览器中打开原文'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// HTML 转纯文本（降级视图用）
+String _stripHtml(String html) {
+  return html
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .trim();
 }

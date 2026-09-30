@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:rss_reader/ui/components/html_content_view.dart';
+
+Widget _wrap(Widget child) => MaterialApp(
+      home: Scaffold(body: SingleChildScrollView(child: child)),
+    );
 
 void main() {
   group('cssColor', () {
@@ -89,6 +94,72 @@ void main() {
       final darkColor = stylesForElement(elementOf('<a>x</a>'), dark)!['color'];
 
       expect(darkColor, isNot(lightColor));
+    });
+  });
+
+  group('HtmlContentView.onRenderError', () {
+    // 引擎对两种失败传的元素不同（见 core_build_tree.dart）：
+    // 整篇构建失败 → 合成根元素 'root'；图片加载失败 → 'img'。
+    // 降级只应对前者生效，否则一张图 404 就会把整篇文章换成纯文本。
+    Future<void> triggerError(
+      WidgetTester tester,
+      dom.Element element,
+      void Function() onError,
+    ) async {
+      await tester.pumpWidget(_wrap(HtmlContentView(
+        html: '<p>hi</p>',
+        link: 'https://example.com/a',
+        onRenderError: onError,
+      )));
+
+      final htmlWidget = tester.widget<HtmlWidget>(find.byType(HtmlWidget));
+      final context = tester.element(find.byType(HtmlWidget));
+      htmlWidget.onErrorBuilder!(context, element, Exception('boom'));
+    }
+
+    testWidgets('整篇构建失败（root）时回调', (tester) async {
+      var failed = 0;
+
+      await triggerError(tester, dom.Element.tag('root'), () => failed++);
+
+      expect(failed, 1);
+    });
+
+    testWidgets('图片加载失败（img）不回调', (tester) async {
+      var failed = 0;
+
+      await triggerError(tester, dom.Element.tag('img'), () => failed++);
+
+      expect(failed, 0);
+    });
+
+    testWidgets('没传 onRenderError 时不崩', (tester) async {
+      await tester.pumpWidget(_wrap(const HtmlContentView(
+        html: '<p>hi</p>',
+        link: 'https://example.com/a',
+      )));
+
+      final htmlWidget = tester.widget<HtmlWidget>(find.byType(HtmlWidget));
+
+      expect(htmlWidget.onErrorBuilder, isNull);
+    });
+  });
+
+  group('HtmlRenderFallback', () {
+    testWidgets('剥掉标签显示纯文本，还原实体，按钮可点', (tester) async {
+      var opened = 0;
+
+      await tester.pumpWidget(_wrap(HtmlRenderFallback(
+        content: '<h1>标题</h1><p>正文 &amp; 更多</p>',
+        onOpenInBrowser: () => opened++,
+      )));
+
+      expect(find.text('内容渲染异常，已显示纯文本版本'), findsOneWidget);
+      expect(find.textContaining('标题 正文 & 更多'), findsOneWidget);
+      expect(find.textContaining('<h1>'), findsNothing);
+
+      await tester.tap(find.widgetWithText(ElevatedButton, '在浏览器中打开原文'));
+      expect(opened, 1);
     });
   });
 }

@@ -49,6 +49,9 @@ class FeedContextMenu {
           : theme.colorScheme.surface,
     );
 
+    // showMenu 是异步的，期间菜单所属的页面可能已经销毁
+    if (!context.mounted) return;
+
     switch (selected) {
       case _MenuItem.togglePin:
         onTogglePin?.call();

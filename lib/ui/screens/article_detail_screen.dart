@@ -10,6 +10,7 @@ import '../../services/cache_service.dart';
 import '../../services/rss_service.dart';
 import '../../services/storage_service.dart';
 import '../../utils/date_format.dart';
+import '../../utils/download_names.dart';
 import '../../utils/html_content.dart';
 import '../components/html_content_view.dart';
 import '../components/image_gallery.dart';
@@ -137,6 +138,53 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
   }
 
+  /// 批量下载正文里的图片：只弹一次目录选择框，然后串行下载。
+  ///
+  /// 串行是为了能汇报进度、也不至于把图片服务器打崩；
+  /// 只弹一次则是因为早先的实现是每张图各弹一次保存框（见 known-issues 2.3）。
+  /// 同名文件会直接覆盖（单张保存那条路由系统对话框负责提醒）。
+  Future<void> _downloadAllImages(List<String> images) async {
+    if (images.isEmpty) return;
+
+    final directory = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '选择保存位置（共 ${images.length} 张）',
+    );
+    if (directory == null || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final dio = Dio();
+    final names = uniqueFileNamesFor(images);
+    var saved = 0;
+    final failed = <String>[];
+
+    for (var i = 0; i < images.length; i++) {
+      messenger.removeCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(
+        content: Text('正在下载图片 ${i + 1}/${images.length}…'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(minutes: 1),
+      ));
+
+      try {
+        await dio.download(images[i], '$directory/${names[i]}');
+        saved++;
+      } catch (e) {
+        debugPrint('[下载] 失败 ${images[i]}: $e');
+        failed.add(images[i]);
+      }
+    }
+
+    messenger.removeCurrentSnackBar();
+    if (!mounted) return;
+
+    _showToast(
+      context,
+      failed.isEmpty
+          ? '已保存 $saved 张图片到 $directory'
+          : '已保存 $saved 张，${failed.length} 张失败',
+    );
+  }
+
   Future<void> _downloadImage(BuildContext context, String url) async {
     try {
       final fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0];
@@ -149,7 +197,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
       await Dio().download(url, result);
 
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       _showToast(
         context,
@@ -160,7 +208,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         },
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       _showToast(context, '下载失败');
     }
   }
@@ -241,10 +289,12 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
           feedTitle: feed?.displayTitle,
           isFavorite: article.isFavorite,
           isRefreshing: _isRefreshing,
+          imageCount: images.length,
           onRefresh: _forceRefresh,
           onToggleFavorite: _toggleFavorite,
           onOpenInBrowser: _openInBrowser,
           onShare: _shareArticle,
+          onDownloadAllImages: () => _downloadAllImages(images),
         ),
         Expanded(
           child: Stack(
@@ -349,21 +399,6 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   Future<void> _shareImage(String url) async {
     await Share.share(url, subject: '分享图片');
   }
-
-}
-
-/// HTML 转纯文本
-String _stripHtml(String html) {
-  return html
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&#39;', "'")
-      .trim();
 }
 
 /// 详情页顶部操作栏：左侧订阅源名，右侧刷新 / 收藏 / 浏览器打开 / 分享。
@@ -373,19 +408,23 @@ class _DetailActionBar extends StatelessWidget {
   final String? feedTitle;
   final bool isFavorite;
   final bool isRefreshing;
+  final int imageCount;
   final VoidCallback onRefresh;
   final VoidCallback onToggleFavorite;
   final VoidCallback onOpenInBrowser;
   final VoidCallback onShare;
+  final VoidCallback onDownloadAllImages;
 
   const _DetailActionBar({
     required this.feedTitle,
     required this.isFavorite,
     required this.isRefreshing,
+    required this.imageCount,
     required this.onRefresh,
     required this.onToggleFavorite,
     required this.onOpenInBrowser,
     required this.onShare,
+    required this.onDownloadAllImages,
   });
 
   @override
@@ -430,6 +469,12 @@ class _DetailActionBar extends StatelessWidget {
               tooltip: '重新抓取全文',
               visualDensity: VisualDensity.compact,
             ),
+          IconButton(
+            icon: const Icon(Icons.download_for_offline_outlined, size: 20),
+            onPressed: imageCount > 0 ? onDownloadAllImages : null,
+            tooltip: '下载全部图片',
+            visualDensity: VisualDensity.compact,
+          ),
           IconButton(
             icon: Icon(
               isFavorite ? Icons.favorite : Icons.favorite_border,
@@ -499,10 +544,10 @@ class _MetaRow extends StatelessWidget {
   }
 }
 
-/// 渲染异常时的降级展示：纯文本 + 提示 + 浏览器打开。
+/// 正文渲染的失败兜底：引擎构建整篇 HTML 失败时切到纯文本降级视图。
 ///
-/// 注意：`_hasError` 目前只读不写，这个降级分支实际上永远不会进入。
-/// 保留以备接入真正的错误捕获（见 docs/known-issues.md）。
+/// 错误信号来自 [HtmlContentView.onRenderError]，且只对「整篇构建失败」置位 ——
+/// 单张图片加载失败不会把文章换成降级视图。
 class ErrorBoundary extends StatefulWidget {
   final String content;
   final String link;
@@ -527,55 +572,29 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
   bool _hasError = false;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  void didUpdateWidget(covariant ErrorBoundary oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 换了正文（重新抓取 / 切文章）就再给渲染引擎一次机会
+    if (oldWidget.content != widget.content) {
+      _hasError = false;
+    }
+  }
 
+  /// 引擎构建整篇正文失败时调用。它发生在 build 期间，不能同步 setState，
+  /// 所以隔一帧再切到降级 UI。
+  void _markRenderFailed() {
+    if (_hasError) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_hasError) setState(() => _hasError = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (_hasError) {
-      // 降级 UI：纯文本 + 提示 + 浏览器打开
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 错误提示
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.errorContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, color: theme.colorScheme.onErrorContainer),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '内容渲染异常，已显示纯文本版本',
-                    style: TextStyle(color: theme.colorScheme.onErrorContainer),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // 纯文本内容（支持选择复制）
-          SelectionArea(
-            child: Text(
-              _stripHtml(widget.content),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                height: 1.6,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // 在浏览器中打开按钮
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: widget.onOpenInBrowser,
-              icon: const Icon(Icons.open_in_browser),
-              label: const Text('在浏览器中打开原文'),
-            ),
-          ),
-        ],
+      return HtmlRenderFallback(
+        content: widget.content,
+        onOpenInBrowser: widget.onOpenInBrowser,
       );
     }
 
@@ -586,6 +605,7 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
         link: widget.link,
         onTapLink: widget.onTapLink,
         onTapImage: widget.onTapImage,
+        onRenderError: _markRenderFailed,
       ),
     );
   }
