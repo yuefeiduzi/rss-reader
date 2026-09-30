@@ -68,7 +68,7 @@ csslib / html / logging），`html` 的版本锁定随之移除。实测渲染�
 
 | 问题 | 位置 | 说明 |
 |---|---|---|
-| 批量下载图片弹多个保存框 | `article_detail_screen.dart` | 循环调用 `_downloadImage`，每张图各弹一次文件选择器 |
+| ~~批量下载图片弹多个保存框~~ | 已修（2026-09-30）：详情页新增「下载全部图片」，只弹一次目录选择框、串行下载、单条进度；文件名推导在 `lib/utils/download_names.dart`（有单测） |
 | 存储层的写入放大 | `storage_service.dart` | 每次落盘都会重新序列化**全部**文章；Web 的 localStorage 有 ~5MB 上限 |
 | 未读标记无「全部已读」 | — | 只能逐篇打开，没有批量操作 |
 
@@ -82,14 +82,17 @@ csslib / html / logging），`html` 的版本锁定随之移除。实测渲染�
 **已清理约 220 行**（`_showImagePreview`、`_showImageContextMenu`、
 `_openImageGalleryFromContext`、`_downloadAllImages`）。
 
-剩余无调用者：
+**剩余无调用者（2026-09-30 清零）**：
 
-- `cache_service.dart`：`cacheImage` / `getCachedImage`（图片 Base64 缓存）、`getCacheStats`
-- `storage_service.dart`：`clearOldArticles`
-- `backup_service.dart`：`getBackupFiles`、`importOpmlFromZip`
-- `responsive_layout.dart`：`isWideScreen` 与断点枚举
-- `article_detail_screen.dart`：`_hasError` 降级分支（只读不写，永不触发）
-- `pubspec.yaml`：`cached_network_image`（正文用 `NetworkImage`，列表用 `Image.network`）
+- `cache_service`：`getCachedArticle` / `cacheImage` / `getCachedImage` /
+  `clearArticleCache` / `clearAllCache` / `getCacheStats` —— 连带那套从未接线的
+  Base64 图片缓存字段一起删了（它只会把空 map 反复写进 prefs）
+- `backup_service`：`getBackupFiles` / `importOpmlFromZip`
+- `responsive_layout`：`isWideScreen`
+- `article_detail_screen.dart`：`_hasError` 降级分支 —— 不是删掉，而是接上了真信号，
+  见下方 2.4.1 的更新
+- `pubspec.yaml`：`cached_network_image` 已无引用，连同 13 个传递依赖一起移除
+  （sqflite / http / rxdart / flutter_cache_manager …）
 
 **已删除：五个纯持久化、无人读写的配置字段**（2026-09-29 核实并删除）
 
@@ -131,6 +134,9 @@ pubspec 里却从未被引用，因此尝试通过覆写 `WidgetFactory.imagePro
 会渲染成黑块（移除覆写后黑块消失，已确认由它导致）。已回退为默认的 `NetworkImage`。
 若后续要做图片缓存，建议改用 fwfh 的 `customWidgetBuilder` 自行接管 `img` 元素，
 而不是替换全局 ImageProvider。
+
+> 2026-09-30 补充：那套从未接线的 Base64 图片缓存（`cacheImage` / `getCachedImage`、
+> `image_cache` 这个 prefs key）已随死代码一起删除；`cached_network_image` 依赖也移除了。
 
 ### 2.5 平台
 
@@ -240,8 +246,8 @@ The Swift pod `DKPhotoGallery` depends upon `SDWebImage`, which does not define 
 
 | 事项 | 结果 |
 |---|---|
-| `flutter analyze` | 0 error，4 info |
-| `flutter test` | 79/79 通过 |
+| `flutter analyze` | 0 issues（2026-09-30 起；此前 0 error + 4 info） |
+| `flutter test` | 93/93 通过 |
 | `flutter build macos --debug` | ✅ |
 | `flutter build macos --release` | ✅ 50.0MB |
 | app 启动 | ✅ 进程正常起 |
@@ -274,8 +280,11 @@ macOS 集成测试跑的是真 app + 真网络，fixture 只是为了让内容�
 ### 2.6 规范
 
 - `analysis_options.yaml` 里 `deprecated_member_use: ignore` 掩盖了一批存量：`WillPopScope`（`settings_screen.dart`）、`MaterialStateTextStyle`、`ColorScheme.background/surfaceVariant`
-- `article_detail_screen.dart` 顶部 `// ignore_for_file: use_build_context_synchronously` 全局压制了正在发生的 async-gap 问题
 - `ResponsiveLayout` 只在首页使用，与「统一用它做宽屏适配」的约定不符
+
+~~`article_detail_screen.dart` 顶部 `ignore_for_file: use_build_context_synchronously`~~：
+该 ignore 与它掩盖的 3 条真实 async-gap 警告已在 2026-09-30 修掉（`context.mounted` 守卫），
+`flutter analyze` 现在是 0 issues。
 
 ### 2.7 HDR / 宽色域（2026-09-29 逐层核实）
 

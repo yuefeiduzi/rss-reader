@@ -17,7 +17,7 @@
 5. macOS 桌面端打通：补齐 Xcode 27 + CocoaPods，`flutter build macos` 通过，
    并实测抓到了真实 RSS 源（这正是 Web 端做不到的事）
 
-当前：`flutter analyze` 0 error，`flutter test` 79 个单测/组件测试通过，
+当前：`flutter analyze` **0 issues**，`flutter test` 93 个单测/组件测试通过，
 macOS 端可构建可运行、能抓真实订阅源，且**完整链路 e2e 已自动化**
 （`./tool/run_macos_e2e.sh`：6 个集成测试 + fixture 请求日志校验）；
 Web 端 e2e 已验证。
@@ -27,10 +27,13 @@ Web 保留为 UI 演示。iOS 是**有意排后面**，不是放弃 —— 详�
 
 **下一步优先级**（完整清单在 [`TODO.md`](TODO.md)）：
 
-1. **把 macOS 打磨到真正可用** —— 构建已经通了，接下来是第一次当真桌面应用用
-2. 补 Android SDK，打通第二个平台
+1. **把 macOS 打磨到真正可用** —— 构建与链路都通了，接下来是桌面体验：
+   应用图标、窗口 `minSize`、系统菜单栏、需翻墙源的代理设置，
+   以及把原生对话框那 4 项人工点一遍（见「测试」）
+2. 补 Android SDK（缺 cmdline-tools + license），打通第二个平台
 3. 存储层改造 —— 现在每次落盘都重新序列化全部文章，Web 的 localStorage 有 ~5MB 上限
-4. 清理剩余死代码与无引用依赖（清单在 `docs/known-issues.md` 2.4）
+4. 清 `analysis_options.yaml` 的 `deprecated_member_use: ignore`（`surfaceVariant` ×4、
+   `MaterialStateTextStyle` ×2），并统一宽屏适配走 `ResponsiveLayout`
 
 已核实但未修的问题都在 [`docs/known-issues.md`](docs/known-issues.md)，每条附证据。
 **动手前先看它**，避免重复踩已踩过的坑。
@@ -243,6 +246,7 @@ lib/
 │   ├── feed_url.dart         # normalizeFeedUrl
 │   ├── opml.dart             # OPML 解析/生成 + XML 实体转义
 │   ├── date_format.dart      # formatDate / formatDateTime / formatRelativeDate
+│   ├── download_names.dart   # 批量下载图片的文件名推导与去重
 │   └── html_content.dart     # extractImageUrls / absolutizeImageUrls
 └── ui/
     ├── screens/              # home / article_list / article_detail / settings / features
@@ -251,7 +255,7 @@ lib/
         ├── feed_list_tile.dart     # 单个订阅源项（手势 / 动画）
         ├── feed_context_menu.dart  # 订阅源右键、长按菜单
         ├── article_card.dart       # 文章卡片
-        ├── html_content_view.dart  # 正文 HTML 渲染
+        ├── html_content_view.dart  # 正文 HTML 渲染 + 失败降级视图
         ├── image_gallery.dart      # 全屏图片画廊
         └── add_feed_dialog.dart / edit_feed_dialog.dart / responsive_layout.dart
 
@@ -338,7 +342,9 @@ dependency_overrides:
 - `MaterialStateTextStyle` → `WidgetStateTextStyle`
 - `ColorScheme.background/surfaceVariant` 已弃用
 
-`analysis_options.yaml` 里 `deprecated_member_use: ignore` 掩盖了一批存量，改到相关文件时顺手清。
+`analysis_options.yaml` 里 `deprecated_member_use: ignore` 掩盖了一批存量（`surfaceVariant` ×4、
+`MaterialStateTextStyle` ×2），改到相关文件时顺手清。目前 `flutter analyze` 是 0 issues，
+那 6 条被 ignore 掩盖的弃用并不报出来。
 
 ### 5. `StorageService` 把全部数据存在 SharedPreferences
 
@@ -476,8 +482,9 @@ flutter test test/opml_test.dart                # 单个文件
 | `build-web` | ubuntu | `flutter build web --release`（只验构建，不验功能） |
 | `build-macos` | macos | `flutter build macos --debug` |
 
-**`--no-fatal-infos` 是必要的，不是放水**：`flutter analyze` 遇到 info 也退出 1
-（已实测），而仓库有 4 条存量 info。error 与 warning 依然会让 CI 变红，
+**`--no-fatal-infos` 保留着，但仓库现在已经是 0 issues**（2026-09-30 清完存量）。
+这个 flag 现在是防回退的护栏：`flutter analyze` 遇到 info 也会退出 1
+（已实测），去掉它就得保证永远不引入任何 info。error 与 warning 依然会让 CI 变红，
 这正是「analyze 必须 0 error」那条约定的机器化版本。
 
 单测全部 hermetic（不发网络请求），所以 CI 不需要任何 fixture 服务。

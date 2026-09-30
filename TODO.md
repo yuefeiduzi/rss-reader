@@ -5,26 +5,15 @@
 最后核对：2026-09-30（在 09-29 的基础上：macOS 完整链路 e2e 自动化跑通；
 复看了 `flutter doctor` —— Android SDK 已装了一部分。逐条证据见文末与 known-issues）
 
-当前基线：`flutter analyze` 4 条 info（都是下方记的存量），`flutter test` 79 个通过，
+当前基线：`flutter analyze` **0 issues**，`flutter test` 93 个通过，
 `./tool/run_macos_e2e.sh` 6/6 通过；macOS debug/release 均可构建。
 
 ---
 
 ## 进行中
 
-- [ ] **清理剩余死代码**（更新后的清单在 [known-issues 2.4](docs/known-issues.md)）：
-      `cache_service` 的 `getCachedArticle` / `cacheImage` / `getCachedImage` /
-      `clearArticleCache` / `clearAllCache` / `getCacheStats`，
-      `backup_service` 的 `getBackupFiles` / `importOpmlFromZip`，
-      `responsive_layout` 的 `isWideScreen`
-- [ ] **处理 `_hasError` 降级分支**：只读不写，永不触发，analyzer 已经把它报成
-      `prefer_final_fields`。二选一 —— 接上错误信号，或连分支一起删
-- [ ] **修 `use_build_context_synchronously` 警告**：`article_detail_screen.dart:155,164`、
-      `feed_context_menu.dart:58`。原先的 `ignore_for_file` 已不在，问题本身还在，
-      现在是 analyzer 里看得见的 3 条 info
-- [ ] **批量下载图片**（是补功能，不是修 bug）：里程碑 D 把无人调用的
-      `_downloadAllImages` 当死代码删了，现在只有画廊里的单张下载。
-      要做的话需要串行任务 + 只弹一次保存框
+（暂无 —— 上一批四项（死代码 / 渲染失败降级 / async-gap 警告 / 批量下载）
+已于 2026-09-30 全部完成，见文末里程碑 E。下一步从下面的路线里挑。）
 
 ## 平台路线（优先级已定：macOS → Android → iOS）
 
@@ -117,8 +106,9 @@
 - [ ] 补充更多 widget 测试（现有 3 个：空状态、写入后自动更新、未读数增量维护）
 - [ ] 引入接口 seam 以便 mock：`file_picker` / `share_plus` / `Clipboard` /
       `url_launcher`，以及 `RssService` 的 `Dio`（现在是 `RssService()` 内部 `Dio()`，
-      无法注入）
-- [ ] 清理 `pubspec.yaml` 里已无引用的依赖（`cached_network_image`，`lib/` 下只剩一条注释提到它）
+      无法注入）；`article_detail_screen` 里的单张/批量下载也各自 `Dio()` 直连
+- [x] ~~清理 `pubspec.yaml` 里已无引用的依赖~~（2026-09-30）：`cached_network_image`
+      连同 13 个传递依赖（sqflite / http / rxdart / flutter_cache_manager …）已移除
 - [x] ~~把 `tool/e2e_fixture/` 接进自动化测试~~（2026-09-30 完成）——
       `integration_test/macos_e2e_test.dart` + `tool/run_macos_e2e.sh` 已经把 fixture
       纳入自动化，不再只是手工 e2e；fixture 请求日志还成了「不该抓的没抓」的硬证据。
@@ -137,13 +127,51 @@
 | 文档里到处写的「`flutter test` 70 个」 | **实际 79**（2026-09-30 核实）。删除 5 个配置字段时新增的 `test/config_test.dart` 9 个用例没同步到 AGENTS.md / TODO / known-issues |
 | 死代码：`storage_service.clearOldArticles` | 方法已不存在 |
 | 死代码：`responsive_layout` 的「断点枚举」 | `ResponsiveBreakpoint` 正被 `ResponsiveLayout` 使用，只有在它自己的文件里被引用；死的只有 `isWideScreen` |
-| 移除 `article_detail_screen.dart` 的 `ignore_for_file: use_build_context_synchronously` | 该 ignore 已不在文件里；改为修 3 条真实警告（并入「进行中」） |
+| 移除 `article_detail_screen.dart` 的 `ignore_for_file: use_build_context_synchronously` | 该 ignore 已不在文件里；3 条真实警告已于 2026-09-30 用 `context.mounted` 修掉 |
 | 批量下载图片「每张弹一次保存框」 | 入口已随里程碑 D 删除，是「无此功能」而非「行为不对」（并入「进行中」） |
 | known-issues 2.6 提到的 `WillPopScope` | 代码里已全部是 `PopScope` |
 
 ---
 
 ## 已完成的里程碑
+
+<details>
+<summary><b>E. 清尾：死代码 / 渲染失败降级 / async-gap 警告 / 批量下载</b>（2026-09-30）</summary>
+
+**死代码清零**
+
+- 删 `cache_service` 的 6 个无调用方法，连带那套从未接线的 Base64 图片缓存
+  （它只会把空 map 反复写进 prefs）
+- 删 `backup_service` 的 `getBackupFiles` / `importOpmlFromZip`、
+  `responsive_layout` 的 `isWideScreen`
+- 顺带删掉 pubspec 里已无引用的 `cached_network_image`（连带 13 个传递依赖：
+  sqflite / http / rxdart / flutter_cache_manager …）
+
+**`_hasError` 接上真信号（不再只读）**
+
+`HtmlContentView` 新增 `onRenderError`，透传 fwfh 的 `onErrorBuilder`；
+只对「整篇构建失败」（引擎传入的合成根元素 `root`）降级，
+单张图片 404 不会把整篇文章换成纯文本。降级 UI 抽成 `HtmlRenderFallback`
+（可单独测试），换正文（重新抓取/切文章）时给引擎重试机会。
+新增 4 个单测覆盖判别逻辑与降级 UI。
+
+**3 条 `use_build_context_synchronously` 全修**
+
+`article_detail_screen.dart` 的 `_downloadImage` 两处、`feed_context_menu.dart`
+的 `showMenu` 之后 —— 都用 `context.mounted` 守卫。
+`flutter analyze` 因此变成 **0 issues**（此前 4 条存量 info）。
+
+**批量下载图片（新功能）**
+
+详情页动作栏新增「下载全部图片」：只弹一次目录选择框、串行下载、
+单条进度 snackbar、结束给汇总（成功/失败张数）。文件名推导抽到
+`lib/utils/download_names.dart`，10 个单测覆盖 query 剥离 / 百分号编码 /
+跨平台非法字符 / 同名去重。
+
+**验证**：`flutter analyze` 0 issues；`flutter test` 79 → 93；
+`./tool/run_macos_e2e.sh` 6/6 仍全绿（详情页与画廊被改动过，必须重跑）。
+
+</details>
 
 <details>
 <summary><b>D. 拆解上帝组件 + 引入状态管理</b>（2026-09-16）</summary>
