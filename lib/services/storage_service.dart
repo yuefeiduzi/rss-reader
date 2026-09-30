@@ -25,7 +25,7 @@ class StorageService extends ChangeNotifier {
   SharedPreferences? _prefs;
   List<Feed> _feeds = [];
   List<Article> _articles = [];
-  AppConfig _config = AppConfig();
+  AppConfig _config = const AppConfig();
 
   /// feedId → 未读数。随写入增量更新，避免每次查询都全量遍历。
   final Map<String, int> _unreadCounts = {};

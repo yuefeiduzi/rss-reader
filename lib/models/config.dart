@@ -1,31 +1,28 @@
+/// 应用配置。
+///
+/// 只保留**真的有代码读写**的字段。2026-09-29 删掉了五个纯持久化、无人使用的字段：
+/// `refreshInterval` / `autoRefreshOnStart` / `lastSyncTime` /
+/// `maxCachedArticles` / `enableNotifications`。
+///
+/// 它们当时会写进 SharedPreferences，但全项目没有任何地方读或写，
+/// 于是「启动时自动刷新」「定时刷新」「缓存上限」「通知」全部是不存在的功能
+/// —— 尽管配置文件里写着 `autoRefreshOnStart: true`。详见
+/// `docs/known-issues.md` 2.4。
+///
+/// 旧数据里残留的这些 key 会被 [fromJson] 直接忽略，无需迁移。
 class AppConfig {
   final bool isDarkMode;
   final bool followSystemTheme;
-  final int refreshInterval;
-  final int maxCachedArticles;
-  final bool autoRefreshOnStart;
-  final bool enableNotifications;
-  final String? lastSyncTime;
 
-  AppConfig({
+  const AppConfig({
     this.isDarkMode = false,
     this.followSystemTheme = true,
-    this.refreshInterval = 60,
-    this.maxCachedArticles = 500,
-    this.autoRefreshOnStart = true,
-    this.enableNotifications = false,
-    this.lastSyncTime,
   });
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     return AppConfig(
       isDarkMode: json['isDarkMode'] ?? false,
       followSystemTheme: json['followSystemTheme'] ?? true,
-      refreshInterval: json['refreshInterval'] ?? 60,
-      maxCachedArticles: json['maxCachedArticles'] ?? 500,
-      autoRefreshOnStart: json['autoRefreshOnStart'] ?? true,
-      enableNotifications: json['enableNotifications'] ?? false,
-      lastSyncTime: json['lastSyncTime'],
     );
   }
 
@@ -33,31 +30,16 @@ class AppConfig {
     return {
       'isDarkMode': isDarkMode,
       'followSystemTheme': followSystemTheme,
-      'refreshInterval': refreshInterval,
-      'maxCachedArticles': maxCachedArticles,
-      'autoRefreshOnStart': autoRefreshOnStart,
-      'enableNotifications': enableNotifications,
-      'lastSyncTime': lastSyncTime,
     };
   }
 
   AppConfig copyWith({
     bool? isDarkMode,
     bool? followSystemTheme,
-    int? refreshInterval,
-    int? maxCachedArticles,
-    bool? autoRefreshOnStart,
-    bool? enableNotifications,
-    String? lastSyncTime,
   }) {
     return AppConfig(
       isDarkMode: isDarkMode ?? this.isDarkMode,
       followSystemTheme: followSystemTheme ?? this.followSystemTheme,
-      refreshInterval: refreshInterval ?? this.refreshInterval,
-      maxCachedArticles: maxCachedArticles ?? this.maxCachedArticles,
-      autoRefreshOnStart: autoRefreshOnStart ?? this.autoRefreshOnStart,
-      enableNotifications: enableNotifications ?? this.enableNotifications,
-      lastSyncTime: lastSyncTime ?? this.lastSyncTime,
     );
   }
 }
