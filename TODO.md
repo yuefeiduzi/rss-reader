@@ -2,11 +2,11 @@
 
 详细的已核实问题与技术债见 [docs/known-issues.md](docs/known-issues.md)。本文件只放**路线图**。
 
-最后核对：2026-09-29（逐条对照源码、`flutter analyze`、`flutter test`、`flutter doctor`、
-macOS 真实构建与真实 RSS 抓取；已不成立的旧条目记在文末的「本轮核对」里，别再照着做）
+最后核对：2026-09-30（在 09-29 的基础上：macOS 完整链路 e2e 自动化跑通；
+复看了 `flutter doctor` —— Android SDK 已装了一部分。逐条证据见文末与 known-issues）
 
-当前基线：`flutter analyze` 4 条 info（都是下方记的存量），`flutter test` 70 个通过，
-macOS debug/release 均可构建。
+当前基线：`flutter analyze` 4 条 info（都是下方记的存量），`flutter test` 79 个通过，
+`./tool/run_macos_e2e.sh` 6/6 通过；macOS debug/release 均可构建。
 
 ---
 
@@ -48,13 +48,23 @@ macOS debug/release 均可构建。
 
 ## macOS
 
-构建已经不是问题了，但**这个 App 从来没有在 macOS 上跑过完整功能链路** ——
-之前所有验证都在 Web 上做的，而 Web 走的是 `tool/e2e_fixture/` 那套 CORS 代理。
-所以下面第一件事是「跑一遍」，之后的条目应该根据跑出来的结果修正。
+构建与完整链路都已经通了（2026-09-30 起链路 e2e 自动化，见下）。
+下面剩下的按「离真正能用还差什么」排。
 
-- [ ] **macOS 端完整链路 e2e**（第一优先）：添加源 → 列表 → 详情 →
-      全文抓取 → 收藏 → 已读 → 删除 → OPML 导入导出 → 备份/恢复 →
-      图片下载 → 分享 → 外部链接。逐项记录，**没跑过的不算通过**
+- [x] **macOS 端完整链路 e2e**（2026-09-30）——`integration_test/macos_e2e_test.dart`
+      + `./tool/run_macos_e2e.sh`（起 fixture → 6 个集成测试 → 校验 fixture 请求日志）
+      - 已自动化：加 RSS 源 / 列表渲染（4 篇）/ 详情全文抓取（`Uint8List` 解码回归点）/
+        收藏 / 打开即已读 / 未读数 4→3 / 加 Atom 源（只有 `<updated>`）/ 菜单删除
+        （二次确认 + 级联删文章）/ 备份 zip 落盘→删除→恢复 / OPML 导出与去重导入 /
+        相对图片补全与 `data-src` 回写 / 画廊开关
+      - 日志侧硬证据：`placeholder.png` 与 `article2.html` 均 **0 请求**
+        （前者 = 懒加载回写回归点，后者 = 摘要够长不该抓全文）
+      - 测试 hermetic：SharedPreferences 被 mock 成内存实现，脚本会校验真实 plist 哈希未变
+      - **仍需人工**：图片保存到磁盘、系统分享、浏览器打开原文、设置页里选文件
+        （原生对话框，自动化一碰就卡；备份/OPML 的读写逻辑已用服务层调用覆盖）
+- [ ] **`xcode-select` 切到 Xcode**（要 sudo）：它现在还指着 CLT，导致直接跑
+      `flutter build macos` / `flutter test -d macos` 会报 “Xcode not installed”
+      （两个脚本里靠 `DEVELOPER_DIR` 绕过）。与 iOS 的前置是同一件事，见 traps 6
 - [x] bundle id 已从模板默认的 `com.example.rssReader` 改为 **`org.ross.rssReader`**
       （2026-09-29，六个平台全部改完，macOS 构建已验）
       ⚠️ **Android 的 `applicationId` 一般用小写**，`rssReader` 里的大写 R 语法合法
@@ -73,8 +83,8 @@ macOS debug/release 均可构建。
 - [ ] **HDR 图片**：引擎级限制，app 代码解决不了 —— 详见
       [known-issues 2.7](docs/known-issues.md)。P3 宽色域已自动生效，真 HDR 需等
       [flutter#127520](https://github.com/flutter/flutter/issues/127520)
-- [ ] 待验证：`share_plus` / `file_picker` 在 macOS 上的真实行为
-      （两者都不支持 SPM，走的是 CocoaPods 回退路径）
+- [ ] 待验证：`share_plus` / `file_picker` 在 macOS 上的**原生对话框**行为
+      （两者都不支持 SPM，走的是 CocoaPods 回退路径；集成测试绕过了对话框，因为会卡住）
 
 ## 架构改进
 
@@ -109,7 +119,11 @@ macOS debug/release 均可构建。
       `url_launcher`，以及 `RssService` 的 `Dio`（现在是 `RssService()` 内部 `Dio()`，
       无法注入）
 - [ ] 清理 `pubspec.yaml` 里已无引用的依赖（`cached_network_image`，`lib/` 下只剩一条注释提到它）
-- [ ] 把 `tool/e2e_fixture/` 接进自动化测试（见其 README 末尾）——卡在上面那条 Dio seam
+- [x] ~~把 `tool/e2e_fixture/` 接进自动化测试~~（2026-09-30 完成）——
+      `integration_test/macos_e2e_test.dart` + `tool/run_macos_e2e.sh` 已经把 fixture
+      纳入自动化，不再只是手工 e2e；fixture 请求日志还成了「不该抓的没抓」的硬证据。
+      原来记的「卡在 Dio seam」只针对纯 widget 测试：若还想让 ubuntu 上的
+      `flutter test`（CI）用上 fixture，仍需要那条 seam；macOS 侧已经不需要了
 - [x] **CI**（2026-09-30）：`.github/workflows/ci.yml` —— analyze + test + build web
       + build macos，每个 PR / push 到 main 都跑；`.github/workflows/release.yml`
       由 `v*` tag 触发，出 universal DMG + SHA256SUMS + 草稿 Release
@@ -118,8 +132,9 @@ macOS debug/release 均可构建。
 
 ## 本轮核对：已不成立的旧条目
 
-| 旧条目 | 现状（2026-09-16） |
+| 旧条目 | 现状 |
 |---|---|
+| 文档里到处写的「`flutter test` 70 个」 | **实际 79**（2026-09-30 核实）。删除 5 个配置字段时新增的 `test/config_test.dart` 9 个用例没同步到 AGENTS.md / TODO / known-issues |
 | 死代码：`storage_service.clearOldArticles` | 方法已不存在 |
 | 死代码：`responsive_layout` 的「断点枚举」 | `ResponsiveBreakpoint` 正被 `ResponsiveLayout` 使用，只有在它自己的文件里被引用；死的只有 `isWideScreen` |
 | 移除 `article_detail_screen.dart` 的 `ignore_for_file: use_build_context_synchronously` | 该 ignore 已不在文件里；改为修 3 条真实警告（并入「进行中」） |

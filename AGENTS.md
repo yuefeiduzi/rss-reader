@@ -17,8 +17,10 @@
 5. macOS 桌面端打通：补齐 Xcode 27 + CocoaPods，`flutter build macos` 通过，
    并实测抓到了真实 RSS 源（这正是 Web 端做不到的事）
 
-当前：`flutter analyze` 0 error，`flutter test` 70 个测试通过，
-macOS 端可构建可运行且能抓真实订阅源，Web 端 e2e 已验证。
+当前：`flutter analyze` 0 error，`flutter test` 79 个单测/组件测试通过，
+macOS 端可构建可运行、能抓真实订阅源，且**完整链路 e2e 已自动化**
+（`./tool/run_macos_e2e.sh`：6 个集成测试 + fixture 请求日志校验）；
+Web 端 e2e 已验证。
 
 **平台优先级（已定）**：**macOS → Android → iOS**。
 Web 保留为 UI 演示。iOS 是**有意排后面**，不是放弃 —— 详见下方平台现状。
@@ -40,8 +42,8 @@ Web 保留为 UI 演示。iOS 是**有意排后面**，不是放弃 —— 详�
 
 | 目标 | 优先级 | 状态 | 阻塞原因 |
 |---|---|---|---|
-| **macOS** | 1️⃣ | ✅ 可编译可运行，**能抓真实 RSS** | 无。唯一「能正经用」的目标 |
-| **Android** | 2️⃣ | ❌ | 未安装 Android SDK（`flutter doctor`：Unable to locate Android SDK） |
+| **macOS** | 1️⃣ | ✅ 可编译可运行，**能抓真实 RSS**，链路 e2e 已自动化 | 无功能阻塞（未签名/未公证不影响自用） |
+| **Android** | 2️⃣ | ❌ | SDK 装了一部分（`flutter doctor`：Android SDK version 36.0.0），但缺 cmdline-tools、license 未接受 |
 | **iOS** | 3️⃣ | ⏸ 有意搁置 | ① `xcode-select` 未切到 Xcode ② 无 Development Team。见下方专节 |
 | Web | — | ✅ 可编译可运行 | **抓不到订阅源** —— 见陷阱 1。保留作 UI 演示 |
 | Windows / Linux | — | — | 需在对应系统上构建 |
@@ -132,6 +134,7 @@ print([json.loads(x)['title'] for x in d['flutter.feeds']])" \
 flutter pub get                 # 拉依赖
 flutter analyze                 # 静态分析（必须 0 error）
 flutter test                    # 单元测试
+./tool/run_macos_e2e.sh         # macOS 完整链路 e2e（集成测试 + fixture 日志校验）
 flutter run -d macos            # 开发模式跑 macOS（首选目标）
 flutter build macos --release   # 构建 macOS
 ./tool/build_macos_dmg.sh       # 打成 DMG 安装包 → build/dist/
@@ -139,7 +142,9 @@ flutter build web --release     # 构建 Web
 flutter run -d chrome           # 开发模式跑 Web
 ```
 
-macOS 端不需要任何环境变量前缀。若 `xcodebuild` 报找不到 SDK，先看陷阱 6。
+macOS 端目前**需要能看到 Xcode**（`xcode-select` 还指着 CLT）：不设 `DEVELOPER_DIR`
+时 `flutter build macos` / `flutter test -d macos` 会直接报 “Xcode not installed”。
+`./tool/run_macos_e2e.sh` 与 `./tool/build_macos_dmg.sh` 会自动带上，手动跑时先看陷阱 6。
 
 ### macOS 安装包
 
@@ -197,7 +202,14 @@ Release 正文 = `docs/UNSIGNED.md`（放行 + 校验）+ 由 `git log` 生成�
 
 ### 端到端验证
 
-**macOS 端直接上真实源**，不需要 fixture —— 没有 CORS 问题（见陷阱 1）。
+**macOS 端**分两层：
+
+1. **自动化（首选，可重复）**：`./tool/run_macos_e2e.sh` —— 起 fixture、跑
+   `integration_test/macos_e2e_test.dart` 的 6 个用例，再用 fixture 请求日志做
+   「不该抓的没抓」校验。详见「测试」一节。
+2. **手工补充**：直接添加真实源（没有 CORS 问题，见陷阱 1）看真实站点渲染。
+   自动化碰不到的是原生对话框那几项：图片保存、分享、浏览器打开原文。
+
 **Web 端**才需要本地 fixture：它受 CORS 限制抓不到真实 RSS 源。
 
 ```bash
@@ -352,7 +364,9 @@ xcrun --show-sdk-path --sdk iphoneos   # → error: SDK "iphoneos" cannot be loc
 xcrun --show-sdk-path --sdk macosx     # → OK（CLT 自带 macOS SDK）
 ```
 
-于是 **macOS 编得过、iOS 编不过**，而且报错完全指不到病根：
+于是 **iOS 必挂**，macOS 也编不了 —— flutter_tools 会直接报 “Xcode not installed”
+（`tool/build_macos_dmg.sh` 里显式给了 `DEVELOPER_DIR`，所以之前没暴露）。
+iOS 的报错则完全指不到病根：
 `objective_c` 的 native-assets 构建钩子只会抛 `Bad state: No element`
 （`objective_c-9.6.0/hook/build.dart:189` → `xcrun` 返回空 stdout）。
 
@@ -363,10 +377,16 @@ sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 sudo xcodebuild -runFirstLaunch
 ```
 
-别指望用 `DEVELOPER_DIR` 环境变量绕过 —— Xcode 的脚本阶段虽然导出了它，
-但 flutter_tools 起 hook 进程时不会透传，hook 里的 `xcrun` 照样用全局 developer dir。
-（已实测：手动给 hook 进程加 `DEVELOPER_DIR` 后它立刻编出
-`-isysroot .../iPhoneOS27.0.sdk -target arm64-apple-ios`，所以这是唯一变量。）
+**`DEVELOPER_DIR` 能救 macOS，救不了 iOS**（2026-09-30 实测）：
+
+- **macOS**：`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer flutter build macos`
+  可行 —— flutter_tools 的 `xcodebuild -version` 检查与后续 xcodebuild 都吃这个变量。
+  `tool/build_macos_dmg.sh` / `tool/run_macos_e2e.sh` 就是这么绕的。不设它的话，
+  连 macOS 都是直接失败，所以那两处 export 是**必需**的，不是备份。
+- **iOS**：Xcode 的脚本阶段虽然导出了它，但 flutter_tools 起 native-assets hook
+  子进程时不会透传，hook 里的 `xcrun` 照样用全局 developer dir，依旧
+  `Bad state: No element`。（已实测：手动给 hook 进程加 `DEVELOPER_DIR` 后它立刻编出
+  `-isysroot .../iPhoneOS27.0.sdk -target arm64-apple-ios`，所以这是唯一变量。）
 
 `flutter doctor` 里那句「Xcode installation is incomplete」说的就是这件事。
 
@@ -420,8 +440,31 @@ flutter test test/opml_test.dart                # 单个文件
 **单测盖不住的部分要走 e2e**：解析、图片地址、时间显示都有单测，但「真的渲染出来了」
 只能靠跑一遍看。历史上多个缺陷（相对图片 404、404 错误页被当成正文）都是 e2e 才看到的。
 
-- **macOS 端**：直接添加真实订阅源，没有 CORS 干扰
+- **macOS 端**：走 `integration_test/`（自动化，见下）或直接添加真实订阅源
 - **Web 端**：走 `tool/e2e_fixture/`（每个 fixture 文件都对应一个已修过的缺陷）
+
+### macOS 集成测试（integration_test/）
+
+`integration_test/macos_e2e_test.dart` 跑的是**真 app、真网络、真文件系统**，
+按顺序覆盖 TODO 里的每一项：加 RSS 源 → 列表 → 详情全文抓取 → 收藏/已读/未读数 →
+加 Atom 源（只有 `<updated>` 的回归点）→ 菜单删除 → 备份/恢复 + OPML 导出导入 →
+图片地址与画廊。跑法：
+
+```bash
+./tool/run_macos_e2e.sh     # 起 fixture → 跑测试 → 校验请求日志
+```
+
+测试是 **hermetic** 的：`SharedPreferences.setMockInitialValues({})` 换成内存实现，
+不碰 `~/Library/Containers/org.ross.rssReader/...plist`（脚本会校验文件哈希没变）。
+
+**光跑 `flutter test` 不够**：单测断言不到的部分由 fixture 服务器日志兜底 ——
+`placeholder.png` 一次都不能被请求（`data-src` 回写回归点）、`article2.html`
+一次都不能被请求（摘要够长不该抓全文）。这些只有日志能证明，`run_macos_e2e.sh`
+已经把这两条固化成脚本里的检查。
+
+**自动化覆盖不到的**（原生对话框，测试一碰就卡）：图片保存到磁盘、系统分享、
+浏览器打开原文，以及设置页里点 Backup/Import 选文件。备份/OPML 的读写逻辑
+已在集成测试里用服务层直接调用覆盖，缺的只是 file_picker 那一下。
 
 ### CI 里跑什么
 
@@ -438,6 +481,7 @@ flutter test test/opml_test.dart                # 单个文件
 这正是「analyze 必须 0 error」那条约定的机器化版本。
 
 单测全部 hermetic（不发网络请求），所以 CI 不需要任何 fixture 服务。
+集成测试要真 GUI + fixture 服务器，**暂不进 CI**，本地跑 `./tool/run_macos_e2e.sh`。
 
 ## 文档
 

@@ -2,7 +2,8 @@
 
 本文件记录**经过源码核实或实测验证**的问题，每条都附证据。避免记录「听说有问题」这类未验证内容。
 
-最后核对：2026-09-29
+最后核对：2026-09-30（新增：macOS 完整链路 e2e 结果、`xcode-select` 对 macOS 构建的影响；
+其余条目仍是 2026-09-29 核对的）
 
 ---
 
@@ -137,9 +138,9 @@ pubspec 里却从未被引用，因此尝试通过覆写 `WidgetFactory.imagePro
 |---|---|
 | Web 无法抓取 RSS | CORS 预检架构限制，需要代理层。**不是可以改代码绕过的 bug**。**仅限 Web**，macOS 实测不受影响 |
 | Web 备份不可用 | `dart:io` + `path_provider` 在 Web 抛 `UnsupportedError` |
-| Android 未验证 | 缺少 Android SDK |
+| Android 未验证 | SDK 只装了一部分（`flutter doctor`：Android SDK version 36.0.0，但 cmdline-tools 缺失、license 未接受） |
 | iOS 未验证 | **有意排在 macOS / Android 之后**。阻塞与已修部分见 2.5.1 |
-| macOS 完整链路未验证 | 构建与真实 RSS 抓取已通过，但交互链路一次都没跑过（见 2.5.4） |
+| ~~macOS 完整链路未验证~~ | 2026-09-30 已自动化跑通，见 2.5.4 |
 | macOS 抓不到需翻墙的源 | `dio` 用 dart:io 默认直连，不读系统代理 |
 
 ### 2.5.1 iOS 构建阻塞（已定位到根因，按优先级暂不修）
@@ -217,6 +218,7 @@ The Swift pod `DKPhotoGallery` depends upon `SDWebImage`, which does not define 
 | `brew install cocoapods` → `Error: cocoapods: no bottle available!` | USTC 镜像没有 macOS 27 的 bottle | 临时换官方源 + 代理：`HOMEBREW_BOTTLE_DOMAIN=https://ghcr.io/v2/homebrew/core HOMEBREW_API_DOMAIN=https://formulae.brew.sh/api` |
 | `pod install` 卡在 `Cloning into ...`，最终 `Recv failure: Operation timed out` | `github.com` 直连超时 | 挂 `https_proxy=http://127.0.0.1:7897` |
 | `git clone` → `LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443` | 本地代理跑 HTTP/2 不稳 | `git -c http.version=HTTP/1.1`（实测加上就通） |
+| `flutter build macos` / `flutter test -d macos` 报 **“Xcode not installed”** | `xcode-select` 仍指向 CommandLineTools，`xcodebuild -version` 直接失败；之前没暴露是因为 DMG 脚本里设了 `DEVELOPER_DIR` | 脚本（`build_macos_dmg.sh` / `run_macos_e2e.sh`）已自动带 `DEVELOPER_DIR`；根治：`sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`（见 AGENTS.md 陷阱 6） |
 
 ### 2.5.3 Flutter 3.47 会在构建时直接改写平台工程
 
@@ -234,12 +236,12 @@ The Swift pod `DKPhotoGallery` depends upon `SDWebImage`, which does not define 
 
 **给后人的提醒**：pull 下来发现平台目录有 diff、但没人碰过，先想想是不是构建产生的。
 
-### 2.5.4 macOS 现在的真实状态（2026-09-29 实测）
+### 2.5.4 macOS 现在的真实状态（2026-09-29 实测，09-30 补 e2e）
 
 | 事项 | 结果 |
 |---|---|
 | `flutter analyze` | 0 error，4 info |
-| `flutter test` | 70/70 通过 |
+| `flutter test` | 79/79 通过 |
 | `flutter build macos --debug` | ✅ |
 | `flutter build macos --release` | ✅ 50.0MB |
 | app 启动 | ✅ 进程正常起 |
@@ -249,14 +251,25 @@ The Swift pod `DKPhotoGallery` depends upon `SDWebImage`, which does not define 
 | 真实 RSS 抓取 | ✅ sspai 10 篇 / coolshell 15 篇，标题、日期（已 `toLocal()`）、链接均正确 |
 | 真实 Atom 抓取 | ✅ ruanyifeng 3 篇 |
 | 需翻墙的源 | ❌ `feeds.bbci.co.uk` 超时（dio 不读系统代理，国内源正常） |
-| **完整交互链路** | **❌ 从未在 macOS 上跑过** |
+| **完整交互链路** | ✅ 2026-09-30 起由 `integration_test/macos_e2e_test.dart` 覆盖（6 个用例，`./tool/run_macos_e2e.sh` 一键跑；fixture 请求日志兼做反向证据） |
+| 直接 `flutter build macos` | ❌ 报 “Xcode not installed”（`xcode-select` 指向 CLT，且这个命令不经过 `build_macos_dmg.sh` 的 `DEVELOPER_DIR`）；带 `DEVELOPER_DIR` 则 ✅ |
 
-最后一条是重点：macOS 上「能编译、能抓源」已证明，但
-添加源 → 列表 → 详情 → 全文抓取 → 收藏 → 已读 → 删除 → OPML 导入导出 →
-备份/恢复 → 图片下载 → 分享 → 外部链接 这整条链路**一次都没验证过**。
-在跑完之前，不要写成「macOS 已支持」。
+链路 e2e 现在长这样：添加 RSS 源 → 列表（4 篇）→ 详情全文抓取（`Uint8List` 解码回归点）
+→ 收藏 / 打开即已读 / 未读数 4→3 → 添加 Atom 源（只有 `<updated>`）→ 菜单删除
+（二次确认 + 级联删文章）→ 备份 zip 落盘/删除/恢复 → OPML 导出与去重导入 →
+相对图片补全与 `data-src` 回写 → 画廊开关。测试用 mock 的 SharedPreferences，
+不碰用户真实数据（脚本会校验 plist 哈希未变）。
 
-注意 Web 端的 e2e 走的是 `tool/e2e_fixture/` 那套 CORS 代理，跟真实 macOS 环境不是一回事。
+**仍未覆盖**的只有原生对话框四项：图片保存到磁盘、系统分享、浏览器打开原文、
+设置页里点 Backup/Import 选文件（自动化一碰就卡；备份/OPML 的读写逻辑
+已用服务层直接调用覆盖，缺的只是 file_picker 那一下）。
+
+fixture 请求日志里可验证的反向证据：`placeholder.png` 与 `article2.html` 均 **0 请求**
+（前者 = `data-src` 回写回归点，后者 = 摘要够长不该抓全文）。这两条已固化进
+`tool/run_macos_e2e.sh`。
+
+注意 Web 端的 e2e 走的是 `tool/e2e_fixture/` 那套 CORS 代理，跟真实 macOS 环境不是一回事；
+macOS 集成测试跑的是真 app + 真网络，fixture 只是为了让内容可断言。
 
 ### 2.6 规范
 
@@ -335,7 +348,15 @@ grep -n "enableWideGamut" ~/development/flutter/engine/src/flutter/shell/platfor
 
 ## 三、如何复现验证
 
-**优先用 macOS 端验**：没有 CORS 问题，直接添加真实源即可（实测可用源见 2.5.4）。
+**优先用 macOS 端验**：没有 CORS 问题。分两层 ——
+
+- 自动化（首选，可重复）：
+
+```bash
+./tool/run_macos_e2e.sh    # 6 个集成测试 + fixture 请求日志反向校验
+```
+
+- 手工验真实站点（fixture 断言不到的渲染/真实数据差异）：
 
 ```bash
 flutter run -d macos
