@@ -1,18 +1,32 @@
-/// macOS 窗口的顶部安全区。
+/// macOS 窗口顶栏的尺寸约定。
 ///
-/// `macos/Runner/MainFlutterWindow.swift` 把标题栏设成透明、隐藏标题，并让内容
-/// 顶到窗口最顶部，于是红绿灯会浮在 Flutter 画的顶栏之上。这里给出需要让出的
-/// 高度；`main.dart` 把它注入 `MediaQuery.padding.top`，Material 的 AppBar
-/// （`primary: true` 时）会自动据此加高自己并把标题、按钮下移，
-/// 因此不用在各个页面里手写 padding。
+/// `macos/Runner/MainFlutterWindow.swift` 给窗口加了 `.fullSizeContentView`：
+/// 内容铺满整窗（含标题栏那条带），标题栏透明、标题隐藏，于是红绿灯直接浮在
+/// Flutter 画的顶栏左上角 —— 整个头部是一条带子，不是「系统标题栏 + 应用顶栏」两层。
+/// 这里给出这条带子要用的两个数，`HomeScreen` / `SettingsScreen` 据此排版。
 library;
 
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-/// NSWindow 标题栏的高度，也就是红绿灯所在那条带子。
-const double macOSTitleBarHeight = 28;
+/// 顶栏高度。
+///
+/// 比 Material 默认的 56 略矮。红绿灯在原生侧被下移到这条带子的中线上
+/// （`MainFlutterWindow.alignTrafficLights`，高度由 `syncMacOSTopBarHeight` 告知），
+/// 所以标题/按钮与红绿灯是同一条中心线。
+///
+/// 改这个值别忘了一起改 `app_top_bar.dart` 里的排版预期；原生侧不用改，它会收到新值。
+double get macOSTopBarHeight => isMacOSDesktop ? 52 : kDefaultToolbarHeight;
+
+/// 非 macOS 上就是 Material 的默认工具栏高度。
+const double kDefaultToolbarHeight = 56;
+
+/// 红绿灯占掉的横向空间。
+///
+/// 三个 12pt 的圆点从 x=13 开始、间距 8pt，加上一点余量约 80pt ——
+/// 顶栏最左侧的内容要往右让开这么多，否则会被红绿灯压住且点不到。
+double get macOSTrafficLightInset => isMacOSDesktop ? 80 : 0;
 
 /// 是否运行在 macOS 桌面端。
 ///

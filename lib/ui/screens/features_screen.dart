@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../components/app_top_bar.dart';
+
 class FeaturesScreen extends StatelessWidget {
   const FeaturesScreen({super.key});
 
@@ -59,7 +61,7 @@ class FeaturesScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: appTopBar(
         title: const Text(
           '功能介绍',
           style: TextStyle(
@@ -67,7 +69,7 @@ class FeaturesScreen extends StatelessWidget {
             letterSpacing: -0.3,
           ),
         ),
-        centerTitle: false,
+        onBack: () => Navigator.of(context).pop(),
       ),
       body: SingleChildScrollView(
         child: Padding(

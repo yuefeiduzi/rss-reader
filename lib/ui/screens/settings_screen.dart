@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/backup_service.dart';
-import '../components/window_drag_area.dart';
+import '../components/app_top_bar.dart';
 import 'features_screen.dart';
 
 /// 设置页。作为独立路由推入，因此自带 Scaffold 与 AppBar。
@@ -216,7 +216,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeService = context.watch<ThemeService>();
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: appTopBar(
         title: const Text(
           'Settings',
           style: TextStyle(
@@ -224,9 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             letterSpacing: -0.3,
           ),
         ),
-        centerTitle: false,
-        // 同首页：透明标题栏下顶栏空白处可拖动窗口（仅 macOS 生效）
-        flexibleSpace: const MacWindowDragArea(),
+        onBack: () => Navigator.of(context).pop(),
       ),
       body: SingleChildScrollView(
         child: Column(

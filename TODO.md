@@ -48,9 +48,10 @@
       注意 macOS 规范：系统不裁圆角也不加投影，画布四周要自己留白
       （Apple 网格：1024 画布里内容约占 824，即四周约 10%）。
       可用 `flutter_launcher_icons` 一次性生成（dev dependency）
-- [x] **② 窗口默认位置 / ③ 红绿灯适配 / ④ 正文图片居中**（2026-09-30 完成）——
-      ② 优先恢复上次位置，第一次打开居中；③ 标题栏透明 + `.fullSizeContentView`，
-      红绿灯浮在 Flutter 顶栏上，整条顶栏都能拖动（`MacWindowDragArea` + method channel）；
+- [x] **② 窗口默认位置 / ③ 红绿灯适配 / ④ 正文图片居中**（2026-09-30 完成，
+      ③ 2026-10-12 重做）——
+      ② 优先恢复上次位置，第一次打开居中；③ 现在内容真铺满整窗（`.fullSizeContentView`
+      真的加到了窗口上），顶栏压到 52pt，红绿灯与标题/按钮同一条带子，深色下不再有白杠；
       ④ 只有图片的容器加 `text-align: center`。细节与实测记录见里程碑 F
 
 **其余**
@@ -133,17 +134,40 @@
 
 **③ 红绿灯（traffic lights）适配**
 
-- `titlebarAppearsTransparent = true` + `titleVisibility = .hidden` +
-  `.fullSizeContentView`：不再有系统标题栏 + 应用顶栏两层，Flutter 顶栏顶到
-  窗口最上方，红绿灯浮在它上面（像 Mail / Notes）
-- Flutter 侧把标题栏高度注入 `MediaQuery.padding.top`（`lib/utils/macos_window.dart`
-  + `main.dart` 的 `builder`）：AppBar 自己会加高并把标题、按钮下移，
-  不用逐页写 padding；窄屏（返回按钮在左侧）也不会撞到红绿灯 —— 截图验证过
+- 窗口：`titlebarAppearsTransparent = true` + `titleVisibility = .hidden` +
+  **`.fullSizeContentView`**，Flutter 内容铺满整窗（含标题栏那条带），红绿灯浮在
+  Flutter 画的顶栏左上角，整个头部只有一条带子（像 Mail / Notes）
+- ⚠️ 坑：`MainMenu.xib` 里 window 的 `styleMask` 只有
+  `titled/closable/miniaturizable/resizable`，**没有 fullSizeContentView**。
+  早先 Swift 里只是拿它算了个 rect 却从没赋给窗口，于是内容视图从标题栏下方开始，
+  顶上留一条原生色带 —— 浅色主题下也是白的，看不出来；深色主题下就是一条白杠
+  （实测 y=0..32pt 恒为 `#FFFFFF`）。修法就是 `self.styleMask.insert(.fullSizeContentView)`
+- Flutter 侧顶栏：`lib/ui/components/app_top_bar.dart` 统一三件事 —— 工具栏压到
+  52pt（`macOSTopBarHeight`）、标题往右让开红绿灯 80pt（`macOSTrafficLightInset`）、
+  返回键画在标题前面（AppBar 自带的 `leading` 会被居中到红绿灯底下，点不到）。
+  三个页面（首页 / 设置 / 功能介绍）共用这一个组件，不再各写一遍
+- **红绿灯与标题同线**：AppKit 默认把红绿灯居中在标题栏那条 32pt 的带子里
+  （实测按钮中心距窗口顶 16pt），而顶栏是 52pt、中线在 26pt，看着就「高了一截」。
+  AppKit 没有「把红绿灯居中到自定义高度」的接口（那是 NSToolbar 的事），
+  所以 `MainFlutterWindow.alignTrafficLights()` 自己挪这三个按钮：
+  按「目标位置 - 当前位置」算位移，可重复调用；窗口 resize、退出全屏后
+  AppKit 会弹回原处，所以 `didResizeNotification` / `didExitFullScreenNotification`
+  之后再对齐一次。实测：按钮中心 25.8pt vs 标题墨迹中心 25.5pt；缩小窗口、
+  进出全屏后仍是 26pt；挪过之后仍可点（点绿按钮确实缩放了窗口）
 - 拖动：`isMovableByWindowBackground` 实测**不管用**（Flutter 视图拦掉事件，
-  引擎里也没有相关支持）。改成在 AppBar 的 `flexibleSpace` 挂一层
+  引擎里也没有相关支持）。在 AppBar 的 `flexibleSpace` 挂一层
   `MacWindowDragArea`，经 method channel 调 `performDrag(with:)`。
-  实测：拖顶栏窗口跟随位移移动；拖侧栏 tile / 空白处窗口不动
-- 按钮不受影响：集成测试用例 7 点主题按钮与设置入口均正常（拖拽层不吞点击）
+  实测：拖顶栏窗口跟随位移移动（+120,+60 精确跟随）；双击顶栏的系统缩放也还在
+- 按钮不受影响：集成测试用例 7 点主题按钮与设置入口均正常（拖拽层不吞点击），
+  实机也点到了位于标题栏那条带里的主题按钮
+
+**旧实现的教训**：上一版把标题栏高度注入 `MediaQuery.padding.top`，等于在
+「内容本来就已让出标题栏」的基础上又让了一次，顶栏实际有 32+28+56 = 116pt 高，
+深色下还多一条白杠。现在既没有这层 padding，也没有原生色带。
+
+顶栏高度的唯一来源是 Dart 的 `macOSTopBarHeight`，启动时经 method channel
+告知原生（`syncMacOSTopBarHeight`）—— 两边各写一个常量迟早写歪
+（历史上 AppKit 的标题栏是 32pt，Dart 里写的却是 28）。
 
 **④ 正文图片居中**
 

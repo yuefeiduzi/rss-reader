@@ -28,7 +28,8 @@ Web 保留为 UI 演示。iOS 是**有意排后面**，不是放弃 —— 详�
 **下一步优先级**（完整清单在 [`TODO.md`](TODO.md)）：
 
 1. **把 macOS 打磨到真正可用** —— 桌面打磨已完成窗口位置、红绿灯、正文图片居中
-   （见 TODO 里程碑 F），剩下：应用图标、窗口 `minSize`、系统菜单栏、
+   （见 TODO 里程碑 F，其中红绿灯 2026-10-12 重做过一次：内容真铺满整窗、顶栏压到 52pt），
+   剩下：应用图标、窗口 `minSize`、系统菜单栏、
    需翻墙源的代理设置，以及把原生对话框那几项人工点一遍（见「测试」）
 2. 补 Android SDK（缺 cmdline-tools + license），打通第二个平台
 3. 存储层改造 —— 现在每次落盘都重新序列化全部文章，Web 的 localStorage 有 ~5MB 上限
@@ -248,7 +249,7 @@ lib/
 │   ├── date_format.dart      # formatDate / formatDateTime / formatRelativeDate
 │   ├── download_names.dart   # 批量下载图片的文件名推导与去重
 │   ├── html_content.dart     # extractImageUrls / absolutizeImageUrls / isImageOnlyContainer
-│   └── macos_window.dart     # macOS 标题栏高度 + isMacOSDesktop
+│   └── macos_window.dart     # macOS 顶栏高度 / 红绿灯让位宽 + isMacOSDesktop
 └── ui/
     ├── screens/              # home / article_list / article_detail / settings / features
     └── components/
@@ -258,7 +259,8 @@ lib/
         ├── article_card.dart       # 文章卡片
         ├── html_content_view.dart  # 正文 HTML 渲染 + 失败降级视图
         ├── image_gallery.dart      # 全屏图片画廊
-        ├── window_drag_area.dart   # macOS 顶栏拖动把手（method channel）
+        ├── app_top_bar.dart        # 全应用统一顶栏（macOS 红绿灯排版只在这里写一遍）
+        ├── window_drag_area.dart   # macOS 顶栏拖动把手 + 告知原生顶栏高度（method channel）
         └── add_feed_dialog.dart / edit_feed_dialog.dart / responsive_layout.dart
 
 tool/
@@ -434,6 +436,32 @@ env -u PUB_HOSTED_URL flutter pub get   # 实测："Changed 98 dependencies!"，
 
 > 顺带的副作用：谁在没设镜像的机器上跑过 `pub get` 并提交了，谁就会给全仓库
 > 制造一个 99 行的 lock diff。看到这种 diff 先想想是不是这个原因。
+
+### 9. macOS 窗口的 `styleMask` 写在 xib 里，Swift 里改它要 `insert`
+
+`macos/Runner/Base.lproj/MainMenu.xib` 里的 window 只有
+`titled / closable / miniaturizable / resizable`。在 `MainFlutterWindow.swift` 里
+**声明**一个带 `.fullSizeContentView` 的 `styleMask` 然后拿它去算 rect，窗口并不会
+获得那个能力 —— 得真的 `self.styleMask.insert(.fullSizeContentView)`。
+
+这个坑不会报错，只会让「顶栏上多一条白带」：内容视图从标题栏下方开始，顶上
+那条带子由 AppKit 画成系统色（浅色下是白的，跟白底顶栏无缝，看不出来；
+深色主题下就是一条白杠）。实测证据：深色下 y=0..32pt 恒为 `#FFFFFF`，
+而 AppBar 从 32pt 才开始。同类坑：`FlutterViewController` 不会替你铺满整窗，
+引擎里也没引用 `contentLayoutRect` / `fullSizeContentView`（`strings` 查过）。
+
+同一块地方还有第二个坑：**红绿灯的位置也由标题栏高度决定**。AppKit 把它们居中在
+`NSTitlebarView` 里（实测那条带子 32pt、按钮中心距窗口顶 16pt），所以顶栏一旦比它高，
+红绿灯就看着「偏高」。没有接口能把红绿灯居中到任意高度（那是 NSToolbar 的事），
+只能自己算位移挪三个按钮，并且**每次 resize / 退出全屏后都要重挪**（AppKit 会弹回去）。
+详见 `MainFlutterWindow.alignTrafficLights()`。
+
+调窗口外观时先用窗口截图扫一遍像素，别只靠弸眼看：深浅两套主题下
+同一处颜色不同，才暴露出这种问题。
+
+> 想量按钮位置不必截图：`osascript -e 'tell application "System Events" to tell
+> process "RSS Reader" to get {position, size} of buttons of window 1'`
+> 直接给 AX 坐标，比数像素准。
 
 ## 测试
 

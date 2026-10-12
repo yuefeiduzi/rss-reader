@@ -274,10 +274,14 @@ fixture 请求日志里可验证的反向证据：`placeholder.png` 与 `article
 （前者 = `data-src` 回写回归点，后者 = 摘要够长不该抓全文）。这两条已固化进
 `tool/run_macos_e2e.sh`。
 
-**窗口与排版（2026-09-30）**：标题栏透明 + 内容满窗口，红绿灯浮在 Flutter 顶栏上
-（`MainFlutterWindow.swift`），顶栏整条可拖动 —— `isMovableByWindowBackground`
-实测对 Flutter 视图无效，靠 `MacWindowDragArea` + method channel 调
-`performDrag(with:)`。窗口位置恢复上次、首次打开居中。正文图片默认居中：
+**窗口与排版（2026-09-30，2026-10-12 修正）**：标题栏透明 + 内容满窗口，红绿灯浮在
+Flutter 顶栏左上角。⚠️ 前提是 `.fullSizeContentView` **真的**加到 window 上 ——
+`MainMenu.xib` 的 `styleMask` 里没有它，早先只在 Swift 里拿它算了个 rect 却从没赋值，
+于是顶上留了一条 32pt 的原生色带（深色主题下就是白杠）。现在顶栏 52pt，
+红绿灯与标题/按钮同一条带子（`lib/ui/components/app_top_bar.dart`）。
+顶栏整条可拖动 —— `isMovableByWindowBackground` 实测对 Flutter 视图无效，
+靠 `MacWindowDragArea` + method channel 调 `performDrag(with:)`。
+窗口位置恢复上次、首次打开居中。正文图片默认居中：
 只有图片的容器（`<p><img></p>`、`<figure><img></figure>`）加 `text-align: center`，
 判定在 `lib/utils/html_content.dart` 的 `isImageOnlyContainer`。
 

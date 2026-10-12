@@ -5,9 +5,9 @@ import '../../models/article.dart';
 import '../../models/feed.dart';
 import '../../services/storage_service.dart';
 import '../../services/theme_service.dart';
+import '../components/app_top_bar.dart';
 import '../components/feed_list_panel.dart';
 import '../components/responsive_layout.dart';
-import '../components/window_drag_area.dart';
 import 'article_detail_screen.dart';
 import 'article_list_screen.dart';
 import 'settings_screen.dart';
@@ -115,13 +115,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 单层 AppBar。子页面（文章列表 / 详情）不再各自提供 Scaffold+AppBar，
   /// 否则窄屏会出现上下两条标题栏。
+  ///
+  /// macOS 上的红绿灯排版（矮顶栏、左侧让位、返回键位置、可拖窗）统一在
+  /// [appTopBar] 里处理。
   PreferredSizeWidget _buildAppBar({
     required ThemeService themeService,
     required bool isDark,
     required String title,
     VoidCallback? onBack,
   }) {
-    return AppBar(
+    return appTopBar(
       title: Text(
         title,
         maxLines: 1,
@@ -131,15 +134,8 @@ class _HomeScreenState extends State<HomeScreen> {
           letterSpacing: -0.3,
         ),
       ),
-      centerTitle: false,
-      // 透明标题栏下让顶栏空白处能拖动窗口（仅 macOS 生效）
-      flexibleSpace: const MacWindowDragArea(),
-      leading: onBack == null
-          ? null
-          : IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: onBack,
-            ),
+      onBack: onBack,
+      showDivider: true,
       actions: [
         IconButton(
           icon: Icon(_themeIcon(themeService, isDark)),
@@ -154,14 +150,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
-      bottom: PreferredSize(
-        preferredSize: const Size(double.infinity, 1),
-        child: Divider(
-          height: 1,
-          thickness: 1,
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
-        ),
-      ),
     );
   }
 
