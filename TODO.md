@@ -2,8 +2,8 @@
 
 详细的已核实问题与技术债见 [docs/known-issues.md](docs/known-issues.md)。本文件只放**路线图**。
 
-最后核对：2026-10-12（新增「下一批」六项；桌面打磨 ②③④ 已于 2026-09-30 完成，
-只剩 ① 图标 —— 并入下一批。证据都在 docs/known-issues.md 与本文件的里程碑里）
+最后核对：2026-10-14（「下一批」第 ① 项图标**已设计并导出六平台资源**，
+macOS / Web 两端已构建验收；桌面打磨 ②③④ 已于 2026-09-30 完成）
 
 当前基线：`flutter analyze` **0 issues**，`flutter test` 101 个通过，
 `./tool/run_macos_e2e.sh` 7/7 通过；macOS debug/release 均可构建。
@@ -18,34 +18,54 @@
 
 ## 下一批（2026-10-12 排定）
 
-六项：**① 图标 / ② 国际化 / ③ 正文视频 / ④ 正文规范 / ⑤ 二级列表页 / ⑥ 导入导出测试**。
-②④③⑤ 都动 UI 与文案，①⑥ 相对独立。
+六项：**~~① 图标~~（2026-10-14 完成）/ ② 国际化 / ③ 正文视频 / ④ 正文规范 /
+⑤ 二级列表页 / ⑥ 导入导出测试**。
+剩下五项里 ②④③⑤ 都动 UI 与文案，⑥ 相对独立。
 
 建议顺序：先 ②（l10n 基建落地后，后面新写的界面直接走 l10n，不会二次返工）→ ④ → ③
 （同在 `html_content_view.dart` / `html_content.dart` 一带）→ ⑤（列表页设计）；
-① 的设计稿要人拍板，越早越好、可与其它项并行；⑥ 随时能插。
+⑥ 随时能插。
 
-### ① App 图标（六平台还是 Flutter 默认图标）
+### ① App 图标 —— 已完成（2026-10-14）
 
 - [ ] 现状（2026-10-12 核实）：macOS `AppIcon.appiconset` 里 7 个 PNG
       （16/32/64/128/256/512/1024，@1x/@2x 由 `Contents.json` 映射）、iOS 15 个 PNG、
       Android 5 个 `mipmap-*/ic_launcher.png`（**没有 adaptive icon**，无 `mipmap-anydpi-v26`）、
       Web 最弱：`web/` 下只有 `index.html`，**没有任何 favicon / manifest 引用**（grep 0 命中）
+- [x] **设计稿已出（2026-10-13）**：`tool/icon/generate_icons.py`（只用 Pillow，
+      网格 / 标记比例 / 投影都写在代码里，可复现）→ `build/icon_drafts/`
+      （每个方向的 1024…16 PNG + `sheet.png`，含浅底/深底真实像素与放大镜）。
+      四个方向：**A 经典橙 / B 墨蓝夜 / C 纸墨 / D 白瓷**，说明见 `tool/icon/README.md`
+- [x] **已拍板（2026-10-13）：C · 纸墨**（米白纸底 + 墨色波纹，橙点；四个候选 A/B/D 留档）
+- [x] **六平台资源已导出（2026-10-13/14）**：`python3 tool/icon/generate_icons.py export c`
+      —— 一条命令写完 macOS 7 / iOS 15 / Android 5×3 + adaptive xml / Web favicon+icons+manifest /
+      Windows ico，写完逐条回读（尺寸、该带透明的带没带、ico 档数）
 - [ ] 步骤
-      - 出 2–3 个方向的设计稿（可先用 codemode 的 image models 出草图），1024×1024 定稿；
+      - ~~出 2–3 个方向的设计稿~~ 已做，四个方向，1024×1024；
         16/32pt 下要能辨认 —— 别用细线、渐变细节、小字
-      - 生成各平台资源：`flutter_launcher_icons`（dev dependency，最新 0.14.4；README 已核实
-        支持 android / ios / macos / web / windows，Android 可配 adaptive
-        foreground / background / monochrome）
-      - Web 的 `web/icons/` 与 `manifest.json` **现在根本不存在**，要新建并在 `index.html` 里引用
-      - 逐平台核对文件真的被替换（生成器「跑成功但没动文件」是常见坑）
-- [ ] macOS 设计约束：系统不裁圆角、不加投影，圆角要画进图里；画布四周自己留白
-      （Apple 网格：1024 画布里内容约占 824，即四周约 10%）
-- ⚠️ 加 dev 依赖会触发 `flutter pub get` 重新解析：**必须带着 `PUB_HOSTED_URL` 镜像跑**，
+      - [x] 生成各平台资源：**没引 `flutter_launcher_icons`**，用同一个脚本长了 `export`
+        子命令直接写各平台目录（少一个 dev 依赖，也避开 `pubspec.lock` 重解析；
+        macOS / iOS 只覆盖 PNG，`Contents.json` 保持模板原样，不动 Xcode 工程引用）
+      - [x] Web 新建 `web/icons/` 与 `web/manifest.json` 并在 `index.html` 里引用
+      - [x] Android 加 adaptive icon（`mipmap-anydpi-v26/ic_launcher.xml` + foreground /
+        背景色 + monochrome）：foreground 按 108dp 画布的安全区重排（不是直接缩方图），
+        脚本用 `fit_scale()` 反解倍率，实测墨迹半径 0.3062 / 安全圈 0.3056
+      - [x] 逐平台核对文件真的被替换（生成器「跑成功但没动文件」是常见坑）—— 导出时逐条回读，
+        并另做了「按各平台真实遮罩裁一遍」的核对图（`build/icon_drafts/export_review.png`）
+- [x] macOS 设计约束（已核对模板图标并写进脚本）：系统不裁圆角、不加投影，圆角要画进图里；
+      画布四周自己留白。实测模板图标的不透明区是 (101,101)-(923,923)，即
+      **824×824 居中 + 圆角 185.4 + 100px 留白**；脚本照这套网格画，投影剖面也按模板图标拟合过
+- ⚠️ 若仍要引 `flutter_launcher_icons`（本计划已改成自写脚本），加 dev 依赖会触发
+      `flutter pub get` 重新解析：**必须带着 `PUB_HOSTED_URL` 镜像跑**，
       否则 `pubspec.lock` 那 99 行会被静默改写成 pub.dev（AGENTS.md 陷阱 8）
-- [ ] 验收：至少 macOS + Web 两端。`flutter build macos --release` + `./tool/build_macos_dmg.sh`，
-      在 Finder 看 DMG 图标、装到 Applications 看 Dock / 关于本机；Finder 有图标缓存，
-      看不到变化不代表没生效（`killall Finder`，或换个没跑过的新用户/机器验证）
+- [x] **验收（2026-10-14）**：macOS `flutter build macos --release` ✓，解开 .app 里的
+      `AppIcon.icns` 与仓库 PNG 逐像素比最大差 1（Xcode 重压），`Assets.car` 里有 10 条 AppIcon
+      记录，**Dock 实测看到新图标**；Web `flutter build web --release` ✓，`build/web` 下
+      favicon / icons / manifest 都在且被 `index.html` 引用，逐个 curl 200 + 正确 content-type。
+      实测踩到的坑：**Dock 会先显示缓存里的旧图标**（看着像没生效），清缓存的办法写在
+      `tool/icon/README.md`
+- [ ] 剩下的：Android / iOS / Windows **只写了文件，没实机构建**（本机平台阻塞，见 AGENTS.md）；
+      `./tool/build_macos_dmg.sh` 出一版 DMG 算是收尾验收，但得等某个 `v*` 发布时才真要跑
 
 ### ② 国际化（中文 + 英文）
 
@@ -186,12 +206,14 @@
 ## macOS
 
 构建与完整链路都已经通了（2026-09-30 起链路 e2e 自动化）。
-桌面打磨 ②③④ 已完成（见下与里程碑 F），只剩 ① 图标。
+桌面打磨 ②③④ 已完成（见下与里程碑 F），① 图标也已完成（2026-10-14）。
 
 **桌面打磨（2026-09-30）**
 
-- [ ] **① 设计并制作 App 图标** —— 已升级为「下一批」第 ① 项（六平台资源现状与步骤都在那里）；
-      本节只留一条事实：macOS 图标是 `AppIcon.appiconset` 里 7 个 PNG + `Contents.json`
+- [x] **① App 图标**（2026-10-14 完成）—— 方向选 C · 纸墨；`tool/icon/generate_icons.py`
+      一条 `export` 命令写完六平台资源，macOS / Web 两端构建验收过（Dock 实测看到新图标，
+      踩到过 macOS 图标缓存）。细节与「新图标长什么样」见 [tool/icon/README.md](tool/icon/README.md)；
+      Android / iOS / Windows 的文件已写好但**未实机构建**，等那三个平台打通再验
 - [x] **② 窗口默认位置 / ③ 红绿灯适配 / ④ 正文图片居中**（2026-09-30 完成，
       ③ 2026-10-12 重做）——
       ② 优先恢复上次位置，第一次打开居中；③ 现在内容真铺满整窗（`.fullSizeContentView`

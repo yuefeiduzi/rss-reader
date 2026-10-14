@@ -264,7 +264,9 @@ lib/
         └── add_feed_dialog.dart / edit_feed_dialog.dart / responsive_layout.dart
 
 tool/
-└── e2e_fixture/              # 带 CORS 的本地 RSS/Atom 测试源（见其 README）
+├── e2e_fixture/              # 带 CORS 的本地 RSS/Atom 测试源（见其 README）
+└── icon/                     # App 图标：脚本画图，不手改 PNG（见其 README）
+    └── generate_icons.py     # drafts 出设计稿、export 写六个平台的资源
 ```
 
 ### 数据流约定
@@ -462,6 +464,16 @@ env -u PUB_HOSTED_URL flutter pub get   # 实测："Changed 98 dependencies!"，
 > 想量按钮位置不必截图：`osascript -e 'tell application "System Events" to tell
 > process "RSS Reader" to get {position, size} of buttons of window 1'`
 > 直接给 AX 坐标，比数像素准。
+
+### 10. 换了 App 图标却在 Dock / Finder 里看不出变化 = 图标缓存
+
+实测过：二进制里的图标确实换了（`iconutil -c iconset` 解开
+`RSS Reader.app/Contents/Resources/AppIcon.icns`，与仓库 PNG 逐像素比只差 1），
+但 Dock 里仍是旧图标 —— 缓存里那张和改之前的 `app_icon_128.png` 一模一样。
+清缓存（不需要 sudo）与「先证明二进制里是新图标」的命令写在
+[`tool/icon/README.md`](tool/icon/README.md)。
+
+> 别用 `qlmanage -t` 查缩略图：本机实测它会卡住不返回。
 
 ## 测试
 
